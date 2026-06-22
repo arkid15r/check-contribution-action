@@ -1,0 +1,12 @@
+tree 0123456789abcdef0123456789abcdef012345
+parent 0123456789abcdef0123456789abcdef012346
+author Jane Doe <jane@example.com> 1700000000 +0000
+committer Jane Doe <jane@example.com> 1700000000 +0000
+gpgsig -----BEGIN PGP SIGNATURE-----
+
+ iQEcBAABAgAGBQJ...
+ -----END PGP SIGNATURE-----
+
+Add signed feature
+
+Signed-off-by: Jane Doe <jane@example.com>

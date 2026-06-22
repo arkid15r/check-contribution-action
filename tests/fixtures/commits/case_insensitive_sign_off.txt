@@ -1,0 +1,7 @@
+tree 0123456789abcdef0123456789abcdef012345
+author Jane Doe <jane@example.com> 1700000000 +0000
+committer Jane Doe <jane@example.com> 1700000000 +0000
+
+Initial commit
+
+signed-off-by: Jane Doe <jane@example.com>

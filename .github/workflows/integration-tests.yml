@@ -1,0 +1,83 @@
+name: Integration Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/integration-tests.yml
+      - .github/scripts/integration/**
+      - src/**
+      - action.yml
+      - Dockerfile
+      - entrypoint.sh
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/integration-tests.yml
+      - .github/scripts/integration/**
+      - src/**
+      - action.yml
+      - Dockerfile
+      - entrypoint.sh
+
+concurrency:
+  group: integration-tests-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  integration:
+    name: integration-${{ matrix.case }}
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - issue-linking-pass
+          - issue-linking-fail
+          - issue-reference-pass
+          - issue-reference-fail
+          - assignee-pass
+          - assignee-fail
+          - sign-off-pass
+          - sign-off-fail
+          - signature-fail
+          - target-branch-pass
+          - target-branch-fail
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Run integration case
+        env:
+          CASE_ID: ${{ matrix.case }}
+        run: bash .github/scripts/integration/run_case.sh "${{ matrix.case }}"
+
+  cleanup:
+    name: integration-cleanup
+    runs-on: ubuntu-latest
+    needs: integration
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Remove integration test artifacts
+        run: bash .github/scripts/integration/cleanup_run.sh "${{ github.run_id }}"

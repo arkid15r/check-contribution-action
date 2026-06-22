@@ -1,0 +1,79 @@
+name: Check Contribution Action
+description: Validates contribution requirements including issue linkage, commit signatures, and sign-off
+author: arkid15r
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  check_commit_signature:
+    description: Whether to require GPG or SSH signatures on all commits in the PR
+    required: false
+    default: 'false'
+  check_issue_linking:
+    description: Whether to require the PR to be linked to an issue
+    required: false
+    default: 'false'
+  check_issue_reference:
+    description: Whether to allow PRs without a linked issue when the PR description contains a valid closing issue reference
+    required: false
+    default: 'false'
+  check_sign_off:
+    description: Whether to require a Signed-off-by trailer on all commits in the PR
+    required: false
+    default: 'false'
+  close_pr_on_assignee_mismatch:
+    description: Whether to close the PR when the linked issue assignee does not match the PR author
+    required: false
+    default: 'false'
+  github_token:
+    description: GitHub token for API access
+    required: true
+  invalid_branch_message:
+    description: Error message when PR targets an invalid branch
+    required: false
+    default: This PR must target one of the allowed branches.
+  missing_sign_off_message:
+    description: Error message when commits are missing Signed-off-by
+    required: false
+    default: One or more commits are missing a Signed-off-by trailer.
+  no_assignee_message:
+    description: Error message when assignee does not match PR author
+    required: false
+    default: The linked issue must be assigned to the PR author before this PR can be merged.
+  no_issue_message:
+    description: Error message when PR has no linked issue
+    required: false
+    default: This PR must be linked to an issue before it can be merged.
+  require_assignee:
+    description: Whether to require issue assignee to match PR author
+    required: false
+    default: 'false'
+  sign_off_mismatch_message:
+    description: Error message when Signed-off-by does not match commit author
+    required: false
+    default: One or more Signed-off-by trailers do not match the commit author.
+  sign_off_strict_match:
+    description: Whether Signed-off-by must match the commit author identity
+    required: false
+    default: 'false'
+  skip_users:
+    description: Comma-separated list of usernames to skip validation
+    required: false
+    default: ''
+  skip_users_file_path:
+    description: Path to a file containing usernames to skip validation (one username per line)
+    required: false
+    default: ''
+  target_branches:
+    description: Newline-separated list of target branches to validate against (repository default branch is automatically included)
+    required: false
+    default: ''
+  unsigned_commits_message:
+    description: Error message when commits are not signed
+    required: false
+    default: One or more commits are not signed.
+
+runs:
+  using: docker
+  image: docker://ghcr.io/arkid15r/check-contribution-action/check-contribution-action:latest
