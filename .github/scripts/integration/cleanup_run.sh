@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+
 RUN_ID="${1:?Usage: cleanup_run.sh <run-id>}"
 INTEGRATION_LABEL="integration-test"
 RUN_LABEL="integration-run-${RUN_ID}"

@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+# gh reads GH_TOKEN; GitHub Actions sets GITHUB_TOKEN automatically.
+export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+
 INTEGRATION_LABEL="integration-test"
 RUN_ID="${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
 CASE_ID="${CASE_ID:?CASE_ID is required}"
