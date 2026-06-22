@@ -62,7 +62,7 @@ jobs:
         run: docker save check-contribution-action:integration-test | gzip > integration-image.tar.gz
 
       - name: Upload Docker image
-        uses: actions/upload-artifact@6f51ac0367ceeefadcbfb1556dfa6da479ec5400 # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: integration-docker-image
           path: integration-image.tar.gz
@@ -102,7 +102,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download Docker image
-        uses: actions/download-artifact@7ca3fc14deda79a042f7a0936983fb3da1fbc4c1 # v4.2.1
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
           name: integration-docker-image
 
