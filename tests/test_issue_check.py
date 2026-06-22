@@ -49,13 +49,42 @@ class TestIssueCheck:
     def test_validate_bot_pr(
         self, issue_check, mock_config, mock_github_client, mock_bot_pr
     ):
-        """Test that bot PRs are always skipped."""
+        """Test that bot PRs are skipped by default."""
+        mock_config.validate_bot_authors = False
         result = issue_check.run(
             make_context(mock_config, mock_github_client, mock_bot_pr)
         )
 
         assert result.passed is True
         assert result.reason == "Bot user"
+
+    def test_validate_bot_pr_when_validate_bot_authors_enabled(
+        self, issue_check, mock_config, mock_github_client, mock_bot_pr
+    ):
+        """Test that bot PRs are validated when validate_bot_authors is enabled."""
+        mock_config.validate_bot_authors = True
+        mock_config.check_issue_linking = True
+        mock_config.check_issue_reference = False
+        mock_config.require_assignee = False
+        mock_config.target_branches = []
+        mock_bot_pr.base.repo.full_name = "testowner/testrepo"
+        mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
+            {},
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {"closingIssuesReferences": {"edges": []}}
+                    }
+                }
+            },
+        )
+
+        result = issue_check.run(
+            make_context(mock_config, mock_github_client, mock_bot_pr)
+        )
+
+        assert result.passed is False
+        assert result.reason == "No linked issue"
 
     def test_validate_skip_user_pr(
         self, issue_check, mock_config, mock_github_client, mock_pr

@@ -24,8 +24,8 @@ on:
       - entrypoint.sh
 
 concurrency:
-  group: integration-tests-${{ github.repository }}
   cancel-in-progress: false
+  group: integration-tests-${{ github.repository }}
 
 permissions:
   contents: write
@@ -33,11 +33,48 @@ permissions:
   pull-requests: write
 
 jobs:
+  build:
+    name: integration-build
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build action Docker image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          tags: check-contribution-action:integration-test
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save Docker image
+        run: docker save check-contribution-action:integration-test | gzip > integration-image.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@6f51ac0367ceeefadcbfb1556dfa6da479ec5400 # v4.6.2
+        with:
+          name: integration-docker-image
+          path: integration-image.tar.gz
+          retention-days: 1
+
   integration:
     name: integration-${{ matrix.case }}
     runs-on: ubuntu-latest
+    needs: build
     env:
       GH_TOKEN: ${{ github.token }}
+      INTEGRATION_SKIP_DOCKER_BUILD: "true"
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
@@ -63,6 +100,14 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
+
+      - name: Download Docker image
+        uses: actions/download-artifact@7ca3fc14deda79a042f7a0936983fb3da1fbc4c1 # v4.2.1
+        with:
+          name: integration-docker-image
+
+      - name: Load Docker image
+        run: gunzip -c integration-image.tar.gz | docker load
 
       - name: Run integration case
         env:

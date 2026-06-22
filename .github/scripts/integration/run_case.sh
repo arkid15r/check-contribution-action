@@ -14,8 +14,6 @@ trap cleanup_case_artifacts EXIT
 
 setup_run
 
-sign_off_trailer="Signed-off-by: ${BOT_NAME} <${BOT_EMAIL}>"
-
 case "${CASE_ID}" in
   issue-linking-pass)
     create_issue "issue-linking-pass"
@@ -25,6 +23,7 @@ case "${CASE_ID}" in
       "Closes #${ISSUE_NUMBER}" \
       "main" \
       "${BRANCH_PREFIX}/head"
+    wait_for_closing_issue_link
     build_event_payload
     run_action 0 check_issue_linking=true
     ;;
@@ -66,13 +65,14 @@ case "${CASE_ID}" in
 
   assignee-pass)
     create_issue "assignee-pass"
-    assign_issue_to_pr_author
     create_branch_with_commit "${BRANCH_PREFIX}/head" "assignee pass"
     create_pull_request \
       "assignee-pass" \
       "Closes #${ISSUE_NUMBER}" \
       "main" \
       "${BRANCH_PREFIX}/head"
+    wait_for_closing_issue_link
+    assign_issue_to_pr_author
     build_event_payload
     run_action 0 check_issue_linking=true require_assignee=true
     ;;
@@ -85,6 +85,7 @@ case "${CASE_ID}" in
       "Closes #${ISSUE_NUMBER}" \
       "main" \
       "${BRANCH_PREFIX}/head"
+    wait_for_closing_issue_link
     build_event_payload
     run_action 1 check_issue_linking=true require_assignee=true
     ;;
@@ -93,7 +94,7 @@ case "${CASE_ID}" in
     create_branch_with_commit "${BRANCH_PREFIX}/head" \
       "sign-off pass
 
-${sign_off_trailer}"
+$(sign_off_trailer)"
     create_pull_request \
       "sign-off-pass" \
       "Integration test for sign-off pass." \

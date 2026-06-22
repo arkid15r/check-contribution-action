@@ -73,6 +73,10 @@ inputs:
     description: Error message when commits are not signed
     required: false
     default: One or more commits are not signed.
+  validate_bot_authors:
+    description: Whether to validate PRs authored by bots instead of skipping them
+    required: false
+    default: 'false'
 
 runs:
   using: docker

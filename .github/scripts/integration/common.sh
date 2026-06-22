@@ -5,6 +5,10 @@ set -euo pipefail
 
 # gh reads GH_TOKEN; GitHub Actions sets GITHUB_TOKEN automatically.
 export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+if [[ -z "${GH_TOKEN}" ]]; then
+  echo "[integration:${CASE_ID:-?}] ERROR: GH_TOKEN or GITHUB_TOKEN is required" >&2
+  exit 1
+fi
 
 INTEGRATION_LABEL="integration-test"
 RUN_ID="${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
@@ -43,8 +47,19 @@ setup_run() {
   git config user.name "${BOT_NAME}"
   git config user.email "${BOT_EMAIL}"
 
-  log "Building action Docker image"
-  docker build -t "${IMAGE_NAME}" "${GITHUB_WORKSPACE}" >/dev/null
+  if [[ "${INTEGRATION_SKIP_DOCKER_BUILD:-}" == "true" ]]; then
+    if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
+      fail "pre-built image ${IMAGE_NAME} is not available"
+    fi
+    log "Using pre-built Docker image ${IMAGE_NAME}"
+  else
+    log "Building action Docker image"
+    docker build -t "${IMAGE_NAME}" "${GITHUB_WORKSPACE}" >/dev/null
+  fi
+}
+
+sign_off_trailer() {
+  printf 'Signed-off-by: %s <%s>' "${BOT_NAME}" "${BOT_EMAIL}"
 }
 
 track_branch() {
@@ -73,10 +88,53 @@ create_issue() {
 }
 
 assign_issue_to_pr_author() {
+  if [[ -z "${PR_NUMBER}" ]]; then
+    fail "assign_issue_to_pr_author requires PR_NUMBER to be set"
+  fi
+
   local author
-  author="$(gh api user --jq .login)"
+  author="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .user.login)"
   gh issue edit "${ISSUE_NUMBER}" --add-assignee "${author}"
   log "Assigned issue #${ISSUE_NUMBER} to ${author}"
+}
+
+wait_for_closing_issue_link() {
+  local owner="${GITHUB_REPOSITORY%%/*}"
+  local repo="${GITHUB_REPOSITORY##*/}"
+  local max_attempts=30
+  local attempt=0
+  local count
+
+  log "Waiting for closing issue link on PR #${PR_NUMBER}"
+  while [[ $attempt -lt $max_attempts ]]; do
+    count="$(
+      gh api graphql \
+        -f query='query($owner: String!, $repo: String!, $pullRequestNumber: Int!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $pullRequestNumber) {
+              closingIssuesReferences(first: 1) {
+                totalCount
+              }
+            }
+          }
+        }' \
+        -f owner="${owner}" \
+        -f repo="${repo}" \
+        -F pullRequestNumber="${PR_NUMBER}" \
+        --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount' \
+        2>/dev/null || echo 0
+    )"
+
+    if [[ "${count}" -gt 0 ]]; then
+      log "PR #${PR_NUMBER} is linked to ${count} closing issue(s)"
+      return 0
+    fi
+
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+
+  fail "timed out waiting for closing issue link on PR #${PR_NUMBER}"
 }
 
 create_branch_with_commit() {
@@ -136,7 +194,8 @@ run_action() {
   local -a docker_env=(
     -e "GITHUB_EVENT_PATH=/github/workspace/.integration/event.json"
     -e "GITHUB_WORKSPACE=/github/workspace"
-    -e "INPUT_GITHUB_TOKEN=${GITHUB_TOKEN}"
+    -e "INPUT_GITHUB_TOKEN=${GH_TOKEN}"
+    -e "INPUT_VALIDATE_BOT_AUTHORS=true"
   )
 
   while [[ $# -gt 0 ]]; do

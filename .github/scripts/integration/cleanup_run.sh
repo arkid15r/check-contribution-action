@@ -4,6 +4,10 @@
 set -euo pipefail
 
 export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+if [[ -z "${GH_TOKEN}" ]]; then
+  echo "[integration-cleanup] ERROR: GH_TOKEN or GITHUB_TOKEN is required" >&2
+  exit 1
+fi
 
 RUN_ID="${1:?Usage: cleanup_run.sh <run-id>}"
 INTEGRATION_LABEL="integration-test"

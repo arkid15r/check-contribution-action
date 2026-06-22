@@ -29,6 +29,9 @@ class Config:
         self.close_pr_on_assignee_mismatch = self.get_boolean_input(
             "close_pr_on_assignee_mismatch", False
         )
+        self.validate_bot_authors = self.get_boolean_input(
+            "validate_bot_authors", False
+        )
         self.no_issue_message = self.get_input(
             "no_issue_message",
             "This PR must be linked to an issue before it can be merged.",

@@ -19,6 +19,7 @@ def mock_config():
     config.check_sign_off = False
     config.sign_off_strict_match = False
     config.close_pr_on_assignee_mismatch = False
+    config.validate_bot_authors = False
     config.no_issue_message = "No issue message"
     config.no_assignee_message = "No assignee message"
     config.target_branches = []

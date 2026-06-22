@@ -37,6 +37,7 @@ class TestConfig:
             assert config.check_sign_off is False
             assert config.sign_off_strict_match is False
             assert config.close_pr_on_assignee_mismatch is False
+            assert config.validate_bot_authors is False
             assert config.has_enabled_checks is False
             assert (
                 config.no_issue_message
@@ -248,6 +249,18 @@ class TestConfig:
             config = Config()
             assert config.has_enabled_checks is True
             assert "assignee" in config.enabled_check_names()
+
+    def test_validate_bot_authors_input(self):
+        """Test validate_bot_authors boolean input."""
+        with patch.dict(
+            os.environ,
+            {
+                "INPUT_GITHUB_TOKEN": "test_token",
+                "INPUT_VALIDATE_BOT_AUTHORS": "true",
+            },
+        ):
+            config = Config()
+            assert config.validate_bot_authors is True
 
     def test_target_branches_enables_check(self):
         """Test that target_branches counts as an enabled check."""

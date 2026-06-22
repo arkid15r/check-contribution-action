@@ -109,7 +109,7 @@ class IssueCheck:
             "Validating PR #%s by %s", pull_request.number, pull_request.user.login
         )
 
-        if pull_request.user.type == "Bot":
+        if pull_request.user.type == "Bot" and not config.validate_bot_authors:
             logger.info("Skipping validation for bot user: %s", pull_request.user.login)
             return CheckResult(name=self.name, passed=True, reason="Bot user")
 
