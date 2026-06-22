@@ -88,10 +88,12 @@ def get_commits_in_range(
 def run_git(args: list[str], *, workspace: Path | None = None) -> str:
     """Run a git command and return stdout."""
     cwd = resolve_workspace(workspace)
+    # Mounted workspaces in Actions are owned by the runner user, not the container.
+    command = ["git", "-c", f"safe.directory={cwd}", *args]
     logger.debug("Running git %s in %s", " ".join(args), cwd)
     try:
         result = subprocess.run(
-            ["git", *args],
+            command,
             cwd=cwd,
             capture_output=True,
             text=True,

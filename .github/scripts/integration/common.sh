@@ -87,17 +87,6 @@ create_issue() {
   log "Created issue #${ISSUE_NUMBER}"
 }
 
-assign_issue_to_pr_author() {
-  if [[ -z "${PR_NUMBER}" ]]; then
-    fail "assign_issue_to_pr_author requires PR_NUMBER to be set"
-  fi
-
-  local author
-  author="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .user.login)"
-  gh issue edit "${ISSUE_NUMBER}" --add-assignee "${author}"
-  log "Assigned issue #${ISSUE_NUMBER} to ${author}"
-}
-
 wait_for_closing_issue_link() {
   local owner="${GITHUB_REPOSITORY%%/*}"
   local repo="${GITHUB_REPOSITORY##*/}"

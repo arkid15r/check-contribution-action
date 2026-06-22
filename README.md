@@ -42,6 +42,8 @@ make install-dev
 make test
 ```
 
+Integration tests: [.github/scripts/integration/README.md](.github/scripts/integration/README.md)
+
 See [design/check-contribution-action.md](design/check-contribution-action.md) for architecture and implementation phases.
 
 ## License

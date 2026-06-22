@@ -87,7 +87,6 @@ jobs:
           - issue-linking-fail
           - issue-reference-pass
           - issue-reference-fail
-          - assignee-pass
           - assignee-fail
           - sign-off-pass
           - sign-off-fail

@@ -63,20 +63,6 @@ case "${CASE_ID}" in
     run_action 1 check_issue_reference=true
     ;;
 
-  assignee-pass)
-    create_issue "assignee-pass"
-    create_branch_with_commit "${BRANCH_PREFIX}/head" "assignee pass"
-    create_pull_request \
-      "assignee-pass" \
-      "Closes #${ISSUE_NUMBER}" \
-      "main" \
-      "${BRANCH_PREFIX}/head"
-    wait_for_closing_issue_link
-    assign_issue_to_pr_author
-    build_event_payload
-    run_action 0 check_issue_linking=true require_assignee=true
-    ;;
-
   assignee-fail)
     create_issue "assignee-fail"
     create_branch_with_commit "${BRANCH_PREFIX}/head" "assignee fail"

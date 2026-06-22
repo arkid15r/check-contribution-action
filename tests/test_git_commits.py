@@ -15,6 +15,9 @@ from check_contribution_action.git_commits import (
     resolve_workspace,
     split_headers_and_message,
 )
+from check_contribution_action.git_commits import (
+    run_git as git_run,
+)
 from check_contribution_action.models import CommitInfo
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "commits"
@@ -50,6 +53,30 @@ class TestResolveWorkspace:
             "os.environ", {"GITHUB_WORKSPACE": "/custom/workspace"}, clear=False
         ):
             assert resolve_workspace() == Path("/custom/workspace")
+
+
+class TestRunGit:
+    """Test cases for git command execution."""
+
+    def test_run_git_marks_workspace_as_safe_directory(self, tmp_path: Path):
+        """Test git commands trust the mounted workspace directory."""
+        with patch("check_contribution_action.git_commits.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="",
+                stderr="",
+            )
+
+            git_run(["status"], workspace=tmp_path)
+
+            mock_run.assert_called_once_with(
+                ["git", "-c", f"safe.directory={tmp_path}", "status"],
+                cwd=tmp_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
 
 
 class TestSplitHeadersAndMessage:
