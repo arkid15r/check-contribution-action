@@ -12,14 +12,15 @@ log() {
   echo "[integration-cleanup] $*"
 }
 
+# Use gh api for listing so we do not rely on --json flags on gh list/search.
 close_labeled_pull_requests() {
   local numbers
   numbers="$(
-    gh pr list \
-      --state all \
-      --label "${RUN_LABEL}" \
-      --json number \
-      --jq '.[].number' 2>/dev/null || true
+    gh api "repos/${GITHUB_REPOSITORY}/issues" \
+      -f labels="${RUN_LABEL}" \
+      -f state=all \
+      -f per_page=100 \
+      --jq '.[] | select(.pull_request != null) | .number' 2>/dev/null || true
   )"
   if [[ -z "${numbers}" ]]; then
     return
@@ -35,11 +36,11 @@ close_labeled_pull_requests() {
 close_labeled_issues() {
   local numbers
   numbers="$(
-    gh issue list \
-      --state all \
-      --label "${RUN_LABEL}" \
-      --json number \
-      --jq '.[].number' 2>/dev/null || true
+    gh api "repos/${GITHUB_REPOSITORY}/issues" \
+      -f labels="${RUN_LABEL}" \
+      -f state=all \
+      -f per_page=100 \
+      --jq '.[] | select(.pull_request == null) | .number' 2>/dev/null || true
   )"
   if [[ -z "${numbers}" ]]; then
     return
@@ -71,9 +72,9 @@ delete_run_branches() {
 close_prefixed_pull_requests_without_labels() {
   local numbers
   numbers="$(
-    gh search prs "${ARTIFACT_PREFIX} in:title repo:${GITHUB_REPOSITORY}" \
-      --json number \
-      --jq '.[].number' 2>/dev/null || true
+    gh api "search/issues" \
+      -f q="${ARTIFACT_PREFIX} in:title repo:${GITHUB_REPOSITORY} is:pr" \
+      --jq '.items[].number' 2>/dev/null || true
   )"
   if [[ -z "${numbers}" ]]; then
     return
@@ -89,9 +90,9 @@ close_prefixed_pull_requests_without_labels() {
 close_prefixed_issues_without_labels() {
   local numbers
   numbers="$(
-    gh search issues "${ARTIFACT_PREFIX} in:title repo:${GITHUB_REPOSITORY}" \
-      --json number \
-      --jq '.[].number' 2>/dev/null || true
+    gh api "search/issues" \
+      -f q="${ARTIFACT_PREFIX} in:title repo:${GITHUB_REPOSITORY} is:issue" \
+      --jq '.items[].number' 2>/dev/null || true
   )"
   if [[ -z "${numbers}" ]]; then
     return

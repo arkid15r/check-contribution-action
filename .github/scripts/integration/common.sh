@@ -48,19 +48,24 @@ track_branch() {
   CREATED_BRANCHES+=("$1")
 }
 
+# gh issue/pr create print a resource URL on stdout; take the number from the path.
+resource_number_from_url() {
+  echo "${1##*/}"
+}
+
 create_issue() {
   local title="$1"
   local body="${2:-Integration test issue for ${CASE_ID}.}"
+  local issue_url
 
-  ISSUE_NUMBER="$(
+  issue_url="$(
     gh issue create \
       --title "${CASE_PREFIX} issue: ${title}" \
       --body "${body}" \
       --label "${INTEGRATION_LABEL}" \
-      --label "integration-run-${RUN_ID}" \
-      --json number \
-      --jq .number
+      --label "integration-run-${RUN_ID}"
   )"
+  ISSUE_NUMBER="$(resource_number_from_url "${issue_url}")"
   log "Created issue #${ISSUE_NUMBER}"
 }
 
@@ -89,17 +94,17 @@ create_pull_request() {
   local base_branch="${3:-main}"
   local head_branch="$4"
 
-  PR_NUMBER="$(
+  local pr_url
+  pr_url="$(
     gh pr create \
       --base "${base_branch}" \
       --head "${head_branch}" \
       --title "${CASE_PREFIX} pr: ${title}" \
       --body "${body}" \
       --label "${INTEGRATION_LABEL}" \
-      --label "integration-run-${RUN_ID}" \
-      --json number \
-      --jq .number
+      --label "integration-run-${RUN_ID}"
   )"
+  PR_NUMBER="$(resource_number_from_url "${pr_url}")"
   HEAD_BRANCH="${head_branch}"
   PR_BASE="${base_branch}"
   log "Created PR #${PR_NUMBER}"
