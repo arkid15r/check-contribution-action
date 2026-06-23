@@ -1,5 +1,7 @@
 """Tests for pr_manager module."""
 
+from unittest.mock import patch
+
 from check_contribution_action.models import CheckResult, ValidationResult
 from check_contribution_action.pr_manager import PrManager
 
@@ -165,3 +167,73 @@ class TestPrManager:
         pr_manager = PrManager(mock_config)
 
         assert pr_manager.should_close_pr(validation_result) is True
+
+    def test_handle_validation_failure_close_pr_failure(self, mock_config, mock_pr):
+        """Test failure handling when PR closure fails."""
+        mock_config.close_pr_on_assignee_mismatch = True
+        mock_pr.edit.side_effect = Exception("Close API Error")
+        validation_result = make_validation_result(
+            CheckResult(name="issue", passed=False, reason="Assignee mismatch")
+        )
+
+        pr_manager = PrManager(mock_config)
+        result = pr_manager.handle_validation_failure(mock_pr, validation_result)
+
+        assert result is False
+        mock_pr.create_issue_comment.assert_called_once()
+
+    def test_handle_validation_failure_unexpected_error(self, mock_config, mock_pr):
+        """Test failure handling when an unexpected error occurs."""
+        validation_result = make_validation_result(
+            CheckResult(name="issue", passed=False, reason="No linked issue")
+        )
+
+        pr_manager = PrManager(mock_config)
+        with patch.object(
+            pr_manager,
+            "build_failure_message",
+            side_effect=RuntimeError("Unexpected"),
+        ):
+            result = pr_manager.handle_validation_failure(mock_pr, validation_result)
+
+        assert result is False
+
+    def test_get_check_message_unknown_check(self, mock_config):
+        """Test fallback message for unknown check types."""
+        result = CheckResult(name="custom", passed=False, reason="Custom failure")
+        pr_manager = PrManager(mock_config)
+
+        assert pr_manager.get_check_message(result) == "Custom failure"
+
+    def test_get_check_message_unknown_check_without_reason(self, mock_config):
+        """Test default fallback when an unknown check has no reason."""
+        result = CheckResult(name="custom", passed=False)
+        pr_manager = PrManager(mock_config)
+
+        assert pr_manager.get_check_message(result) == "Validation failed"
+
+    def test_get_issue_message_no_reference_in_description(self, mock_config):
+        """Test issue message mapping for missing description reference."""
+        result = CheckResult(
+            name="issue",
+            passed=False,
+            reason=(
+                "No linked issue and no valid closing issue reference in PR description"
+            ),
+        )
+        pr_manager = PrManager(mock_config)
+
+        assert pr_manager.get_issue_message(result) == mock_config.no_issue_message
+
+    def test_get_issue_message_unknown_reason(self, mock_config):
+        """Test issue message fallback for unmapped failure reasons."""
+        result = CheckResult(
+            name="issue",
+            passed=False,
+            reason="Unexpected issue validation error",
+        )
+        pr_manager = PrManager(mock_config)
+
+        assert (
+            pr_manager.get_issue_message(result) == "Unexpected issue validation error"
+        )

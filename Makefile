@@ -23,7 +23,7 @@ lint: ## Run linting
 format: ## Format code
 	poetry run ruff format .
 
-check: pre-commit lint test
+check: pre-commit lint test-cov
 
 clean: ## Clean up generated files
 	rm -rf .coverage htmlcov/ .pytest_cache/ .ruff_cache/

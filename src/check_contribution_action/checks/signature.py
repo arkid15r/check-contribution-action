@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class SignatureCheck:
-    """Require gpgsig headers on every commit in the PR range."""
+    """Require verified GPG or SSH signatures on every commit in the PR."""
 
     @property
     def name(self) -> str:

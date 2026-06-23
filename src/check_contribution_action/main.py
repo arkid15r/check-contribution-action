@@ -9,8 +9,8 @@ import sys
 from github import Github, PullRequest
 
 from check_contribution_action.checks import ALL_CHECKS, CheckContext
+from check_contribution_action.commits import load_pull_request_commits
 from check_contribution_action.config import Config
-from check_contribution_action.git_commits import get_commits_in_range
 from check_contribution_action.models import CheckResult, ValidationResult
 from check_contribution_action.pr_manager import PrManager
 
@@ -18,14 +18,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-
-def is_fork_pr(event_data: dict) -> bool:
-    """Return True when the pull request originates from a fork."""
-    pull_request = event_data.get("pull_request", {})
-    head_repo = pull_request.get("head", {}).get("repo", {}).get("full_name")
-    base_repo = event_data.get("repository", {}).get("full_name")
-    return bool(head_repo and base_repo and head_repo != base_repo)
 
 
 def load_event_data() -> dict:
@@ -39,8 +31,8 @@ def load_event_data() -> dict:
         return json.load(file)
 
 
-def needs_git_commits(config: Config) -> bool:
-    """Return whether git commit inspection is required."""
+def needs_commit_checks(config: Config) -> bool:
+    """Return whether PR commit inspection is required."""
     return config.check_commit_signature or config.check_sign_off
 
 
@@ -51,25 +43,21 @@ def needs_github_client(config: Config) -> bool:
         or config.check_issue_reference
         or config.require_assignee
         or bool(config.target_branches)
+        or needs_commit_checks(config)
     )
-
-
-def load_commits(event_data: dict) -> list:
-    """Load commits in the pull request range from the local git workspace."""
-    pull_request = event_data["pull_request"]
-    base_sha = pull_request["base"]["sha"]
-    head_sha = pull_request["head"]["sha"]
-    return get_commits_in_range(base_sha, head_sha)
 
 
 def run_checks(
     config: Config,
-    event_data: dict,
     pull_request: PullRequest | None = None,
     github: Github | None = None,
 ) -> ValidationResult:
     """Run all enabled contribution checks and aggregate the results."""
-    commits = load_commits(event_data) if needs_git_commits(config) else []
+    commits = (
+        load_pull_request_commits(pull_request)
+        if pull_request is not None and needs_commit_checks(config)
+        else []
+    )
     context = CheckContext(
         config=config,
         commits=commits,
@@ -99,10 +87,6 @@ def main() -> None:
             logger.error("No pull request data found in event")
             sys.exit(1)
 
-        if is_fork_pr(event_data):
-            logger.info("Skipping fork pull request")
-            sys.exit(0)
-
         pr_number = pull_request_data["number"]
         repo_name = event_data["repository"]["full_name"]
         logger.info("Processing PR #%s in repository %s", pr_number, repo_name)
@@ -122,7 +106,6 @@ def main() -> None:
 
         validation_result = run_checks(
             config,
-            event_data,
             pull_request=pull_request,
             github=github,
         )

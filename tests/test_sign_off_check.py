@@ -7,7 +7,7 @@ import pytest
 
 from check_contribution_action.checks.base import CheckContext
 from check_contribution_action.checks.sign_off import SignOffCheck
-from check_contribution_action.git_commits import parse_commit_object
+from check_contribution_action.commits import parse_raw_commit_object
 from check_contribution_action.models import CheckResult, CommitInfo
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "commits"
@@ -22,7 +22,7 @@ def sign_off_check() -> SignOffCheck:
 def load_commit(name: str, sha: str = "abc123") -> CommitInfo:
     """Load a CommitInfo from a raw commit fixture."""
     raw = (FIXTURES_DIR / name).read_text(encoding="utf-8")
-    return parse_commit_object(sha, raw)
+    return parse_raw_commit_object(sha, raw)
 
 
 def make_config(*, strict_match: bool = False) -> Mock:

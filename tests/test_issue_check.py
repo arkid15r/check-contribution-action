@@ -1,6 +1,6 @@
 """Tests for issue contribution check."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -702,6 +702,38 @@ class TestIssueCheck:
 
         assert result.passed is False
         assert result.reason == "No issue to check assignee"
+
+    def test_run_returns_deferred_linking_error_after_reference_lookup_fails(
+        self, issue_check, mock_config, mock_github_client, mock_pr
+    ):
+        """Test deferred linking errors are returned after reference lookup fails."""
+        mock_config.check_issue_linking = True
+        mock_config.check_issue_reference = True
+        mock_config.require_assignee = False
+        linking_result = IssueLookupResult(passed=False, reason="", issue=None)
+
+        with (
+            patch.object(
+                issue_check,
+                "validate_issue_linking",
+                return_value=linking_result,
+            ),
+            patch.object(
+                issue_check,
+                "validate_issue_reference",
+                return_value=IssueLookupResult(
+                    passed=False,
+                    reason="No valid reference",
+                    issue_number=None,
+                ),
+            ),
+        ):
+            result = issue_check.run(
+                make_context(mock_config, mock_github_client, mock_pr)
+            )
+
+        assert result.passed is False
+        assert result.reason == ""
 
 
 class TestIssueLookupResult:

@@ -2,7 +2,6 @@
 FROM python@sha256:26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92
 
 RUN apk add --no-cache \
-    git \
     build-base \
     libffi-dev \
     openssl-dev
