@@ -28,11 +28,25 @@ def load_pull_request_commits(pull_request: PullRequest) -> list[CommitInfo]:
     return commits
 
 
+def commit_is_verified(commit: Commit) -> bool:
+    """Return whether GitHub verified the commit signature."""
+    verification = getattr(commit.commit, "verification", None)
+    if verification is not None:
+        return bool(getattr(verification, "verified", False))
+
+    nested = commit.raw_data.get("commit")
+    if isinstance(nested, dict):
+        raw_verification = nested.get("verification")
+        if isinstance(raw_verification, dict):
+            return bool(raw_verification.get("verified"))
+
+    return False
+
+
 def commit_info_from_github(commit: Commit) -> CommitInfo:
     """Convert a GitHub API commit into :class:`CommitInfo`."""
     git_commit = commit.commit
     author = git_commit.author
-    verification = git_commit.verification
     message = git_commit.message or ""
 
     return CommitInfo(
@@ -40,7 +54,7 @@ def commit_info_from_github(commit: Commit) -> CommitInfo:
         author_name=author.name if author and author.name else "",
         author_email=author.email if author and author.email else "",
         message=message,
-        signed=bool(verification and verification.verified),
+        signed=commit_is_verified(commit),
         sign_offs=parse_sign_offs(message),
     )
 

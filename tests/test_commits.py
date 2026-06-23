@@ -7,6 +7,7 @@ import pytest
 
 from check_contribution_action.commits import (
     commit_info_from_github,
+    commit_is_verified,
     load_pull_request_commits,
     parse_raw_commit_object,
     parse_sign_offs,
@@ -58,6 +59,24 @@ class TestCommitInfoFromGithub:
         info = commit_info_from_github(commit)
 
         assert info.signed is False
+
+    def test_maps_verified_from_raw_data(self):
+        """Test verification is read from API payload when PyGithub omits it."""
+        commit = Mock()
+        commit.sha = "abc123"
+        commit.commit.message = "Add feature"
+        commit.commit.author.name = "Jane Doe"
+        commit.commit.author.email = "jane@example.com"
+        del commit.commit.verification
+        commit.raw_data = {
+            "commit": {
+                "message": "Add feature",
+                "verification": {"verified": True, "reason": "valid"},
+            }
+        }
+
+        assert commit_is_verified(commit) is True
+        assert commit_info_from_github(commit).signed is True
 
     def test_parses_sign_off_from_message(self):
         """Test sign-off trailers are parsed from the commit message."""
