@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "check-contribution-action"
-version = "0.1.2"
+version = "0.1.3"
 description = "GitHub Action to validate contribution requirements"
 authors = ["arkid15r <arkid15r@users.noreply.github.com>"]
 readme = "README.md"

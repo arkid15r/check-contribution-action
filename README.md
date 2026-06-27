@@ -29,7 +29,7 @@ jobs:
       issues: read
       pull-requests: write
     steps:
-      - uses: arkid15r/check-contribution-action@v0.1.2
+      - uses: arkid15r/check-contribution-action@v0.1.3
         with:
           check_for: commit_sign_off, commit_signature, issue_assignee, issue_reference
           close_on: issue_assignee
@@ -73,24 +73,24 @@ Integration tests: [.github/scripts/integration/README.md](.github/scripts/integ
 
 ## Releasing
 
-Each git tag pins a matching immutable Docker image tag in `action.yml`. Consumers on `@v0.1.2` always get the `v0.1.2` image, even after `v0.2.0` ships.
+Each git tag pins a matching immutable Docker image tag in `action.yml`. Consumers on `@v0.1.3` always get the `v0.1.3` image, even after a later release ships.
 
 1. Update the Docker image tag in `action.yml` to the version you are releasing:
 
    ```yaml
-   image: docker://ghcr.io/arkid15r/check-contribution-action/check-contribution-action:v0.1.2
+   image: docker://ghcr.io/arkid15r/check-contribution-action/check-contribution-action:v0.1.3
    ```
 
 2. Commit, push to `main`, then tag and push:
 
    ```bash
-   git tag -a v0.1.2 -m "Release v0.1.2"
-   git push origin v0.1.2
+   git tag -a v0.1.3 -m "Release v0.1.3"
+   git push origin v0.1.3
    ```
 
-The [Release workflow](.github/workflows/release.yml) runs tests, verifies `action.yml` matches the git tag, publishes the Docker image as `v0.1.2` (and a moving `v0` major alias on GHCR), and creates a GitHub Release.
+The [Release workflow](.github/workflows/release.yml) runs tests, verifies `action.yml` matches the git tag, publishes the Docker image as `v0.1.3` (and a moving `v0` major alias on GHCR), and creates a GitHub Release.
 
-Pin `@v0.1.2` for an immutable release. Use a moving git tag such as `@v0` only if you retag it on each minor release and update `action.yml` to point at the latest `v0.x.x` image.
+Pin `@v0.1.3` for an immutable release. Use a moving git tag such as `@v0` only if you retag it on each minor release and update `action.yml` to point at the latest `v0.x.x` image.
 
 ## License
 
