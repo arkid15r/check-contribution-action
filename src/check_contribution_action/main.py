@@ -33,16 +33,15 @@ def load_event_data() -> dict:
 
 def needs_commit_checks(config: Config) -> bool:
     """Return whether PR commit inspection is required."""
-    return config.check_commit_signature or config.check_sign_off
+    return config.check_commit_signature or config.check_commit_sign_off
 
 
 def needs_github_client(config: Config) -> bool:
     """Return whether a GitHub API client is required."""
     return (
-        config.check_issue_linking
-        or config.check_issue_reference
-        or config.require_assignee
-        or bool(config.target_branches)
+        config.check_issue_reference
+        or config.check_issue_assignee
+        or config.check_target_branch
         or needs_commit_checks(config)
     )
 
@@ -52,7 +51,12 @@ def run_checks(
     pull_request: PullRequest | None = None,
     github: Github | None = None,
 ) -> ValidationResult:
-    """Run all enabled contribution checks and aggregate the results."""
+    """Run all enabled contribution checks and aggregate the results.
+
+    Checks run in registration order (issue, commit signature, sign-off).
+    Issue-related validations short-circuit on the first failure inside
+    :class:`~check_contribution_action.checks.issue.IssueCheck`.
+    """
     commits = (
         load_pull_request_commits(pull_request)
         if pull_request is not None and needs_commit_checks(config)
@@ -92,8 +96,8 @@ def main() -> None:
         logger.info("Processing PR #%s in repository %s", pr_number, repo_name)
 
         if not config.has_enabled_checks:
-            logger.warning("No contribution checks are enabled; nothing to validate")
-            sys.exit(0)
+            logger.error("No contribution checks are enabled")
+            sys.exit(1)
 
         logger.info("Enabled checks: %s", ", ".join(config.enabled_check_names()))
 

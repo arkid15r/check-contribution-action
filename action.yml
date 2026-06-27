@@ -6,53 +6,44 @@ branding:
   color: green
 
 inputs:
-  check_commit_signature:
-    description: Whether to require GPG or SSH signatures on all commits in the PR
+  check_for:
+    description: >-
+      Comma-separated contribution checks to enable. Supported values:
+      commit_sign_off, commit_signature, issue_assignee, issue_reference, target_branch
+    required: true
+  close_on:
+    description: >-
+      Comma-separated validation failures that close the PR. Supported values:
+      commit_sign_off, commit_signature, issue_assignee, issue_reference, target_branch
     required: false
-    default: 'false'
-  check_issue_linking:
-    description: Whether to require the PR to be linked to an issue
+    default: ''
+  error_commit_sign_off:
+    description: Error message when commit_sign_off check fails
     required: false
-    default: 'false'
-  check_issue_reference:
-    description: Whether to allow PRs without a linked issue when the PR description contains a valid closing issue reference
+    default: One or more commits are missing or have an invalid Signed-off-by trailer.
+  error_commit_signature:
+    description: Error message when commit_signature check fails
     required: false
-    default: 'false'
-  check_sign_off:
-    description: Whether to require a Signed-off-by trailer on all commits in the PR
+    default: One or more commits are not signed.
+  error_issue_assignee:
+    description: Error message when issue_assignee check fails
     required: false
-    default: 'false'
-  close_pr_on_assignee_mismatch:
-    description: Whether to close the PR when the linked issue assignee does not match the PR author
+    default: The linked issue must be assigned to the PR author before this PR can be merged.
+  error_issue_reference:
+    description: >-
+      Error message when issue_reference check fails (no linked issue or valid
+      closing reference in the PR description)
     required: false
-    default: 'false'
+    default: >-
+      This PR must be linked to an issue or include a valid closing issue
+      reference in the description.
+  error_target_branch:
+    description: Error message when target_branch check fails
+    required: false
+    default: This PR must target one of the allowed branches.
   github_token:
     description: GitHub token for API access
     required: true
-  invalid_branch_message:
-    description: Error message when PR targets an invalid branch
-    required: false
-    default: This PR must target one of the allowed branches.
-  missing_sign_off_message:
-    description: Error message when commits are missing Signed-off-by
-    required: false
-    default: One or more commits are missing a Signed-off-by trailer.
-  no_assignee_message:
-    description: Error message when assignee does not match PR author
-    required: false
-    default: The linked issue must be assigned to the PR author before this PR can be merged.
-  no_issue_message:
-    description: Error message when PR has no linked issue
-    required: false
-    default: This PR must be linked to an issue before it can be merged.
-  require_assignee:
-    description: Whether to require issue assignee to match PR author
-    required: false
-    default: 'false'
-  sign_off_mismatch_message:
-    description: Error message when Signed-off-by does not match commit author
-    required: false
-    default: One or more Signed-off-by trailers do not match the commit author.
   sign_off_strict_match:
     description: Whether Signed-off-by must match the commit author identity
     required: false
@@ -69,10 +60,6 @@ inputs:
     description: Newline-separated list of target branches to validate against (repository default branch is automatically included)
     required: false
     default: ''
-  unsigned_commits_message:
-    description: Error message when commits are not signed
-    required: false
-    default: One or more commits are not signed.
   validate_bot_authors:
     description: Whether to validate PRs authored by bots instead of skipping them
     required: false

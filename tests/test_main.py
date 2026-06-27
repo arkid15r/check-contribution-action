@@ -70,7 +70,7 @@ class TestMain:
         {"GITHUB_EVENT_PATH": "/fake/event/path", "INPUT_GITHUB_TOKEN": "test_token"},
     )
     def test_main_no_enabled_checks(self, mock_file, mock_config_class):
-        """Test that disabled checks exit successfully with a warning."""
+        """Test that no enabled checks exits with an error."""
         mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = False
@@ -78,7 +78,7 @@ class TestMain:
         with pytest.raises(SystemExit) as exc_info:
             main()
 
-        assert exc_info.value.code == 0
+        assert exc_info.value.code == 1
 
     @patch("check_contribution_action.main.run_checks")
     @patch("check_contribution_action.main.Github")
@@ -96,10 +96,10 @@ class TestMain:
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["commit_signature"]
-        mock_config.check_issue_linking = False
         mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = []
+        mock_config.check_target_branch = False
         mock_run_checks.return_value = ValidationResult(passed=True, results=[])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -129,11 +129,11 @@ class TestMain:
         mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
-        mock_config.enabled_check_names.return_value = ["issue_linking"]
-        mock_config.check_issue_linking = True
-        mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.enabled_check_names.return_value = ["issue_reference"]
+        mock_config.check_issue_reference = True
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = []
+        mock_config.check_target_branch = False
         mock_config.github_token = "token"
 
         mock_repo = Mock()
@@ -143,7 +143,15 @@ class TestMain:
 
         mock_run_checks.return_value = ValidationResult(
             passed=False,
-            results=[CheckResult(name="issue", passed=False, reason="No linked issue")],
+            results=[
+                CheckResult(
+                    name="issue_reference",
+                    passed=False,
+                    reason=(
+                        "No linked issue or valid closing issue reference in PR description"
+                    ),
+                )
+            ],
         )
 
         with pytest.raises(SystemExit) as exc_info:
@@ -174,12 +182,12 @@ class TestMain:
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["commit_signature"]
-        mock_config.check_issue_linking = False
         mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = []
+        mock_config.check_target_branch = False
         mock_config.check_commit_signature = True
-        mock_config.check_sign_off = False
+        mock_config.check_commit_sign_off = False
         mock_config.github_token = "token"
 
         mock_repo = Mock()
@@ -216,7 +224,11 @@ class TestMain:
     @patch("builtins.open", new_callable=mock_open)
     @patch.dict(
         os.environ,
-        {"GITHUB_EVENT_PATH": "/fake/event/path", "INPUT_GITHUB_TOKEN": "test_token"},
+        {
+            "GITHUB_EVENT_PATH": "/fake/event/path",
+            "INPUT_GITHUB_TOKEN": "test_token",
+            "INPUT_CHECK_FOR": "issue_reference",
+        },
     )
     def test_main_no_pull_request_data(self, mock_file):
         """Test main execution with no pull request data in event."""
@@ -255,21 +267,23 @@ class TestMain:
         mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
-        mock_config.enabled_check_names.return_value = ["issue_linking"]
-        mock_config.check_issue_linking = False
+        mock_config.enabled_check_names.return_value = ["issue_reference"]
         mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = []
+        mock_config.check_target_branch = False
         mock_config.check_commit_signature = False
-        mock_config.check_sign_off = False
+        mock_config.check_commit_sign_off = False
 
         mock_run_checks.return_value = ValidationResult(
             passed=False,
             results=[
                 CheckResult(
-                    name="issue",
+                    name="issue_reference",
                     passed=False,
-                    reason="No linked issue",
+                    reason=(
+                        "No linked issue or valid closing issue reference in PR description"
+                    ),
                     details=["extra detail"],
                 )
             ],
@@ -289,29 +303,28 @@ class TestOrchestration:
         """Test commit inspection follows signature and sign-off flags."""
         config = Mock()
         config.check_commit_signature = True
-        config.check_sign_off = False
+        config.check_commit_sign_off = False
         assert needs_commit_checks(config) is True
 
         config.check_commit_signature = False
-        config.check_sign_off = False
+        config.check_commit_sign_off = False
         assert needs_commit_checks(config) is False
 
     def test_needs_github_client(self):
         """Test GitHub client detection follows enabled checks."""
         config = Mock()
-        config.check_issue_linking = False
         config.check_issue_reference = False
-        config.require_assignee = False
-        config.target_branches = []
+        config.check_issue_assignee = False
+        config.check_target_branch = False
         config.check_commit_signature = False
-        config.check_sign_off = False
+        config.check_commit_sign_off = False
         assert needs_github_client(config) is False
 
-        config.target_branches = ["main"]
+        config.check_target_branch = True
         assert needs_github_client(config) is True
 
-        config.target_branches = []
-        config.check_sign_off = True
+        config.check_target_branch = False
+        config.check_commit_sign_off = True
         assert needs_github_client(config) is True
 
     @patch("check_contribution_action.main.load_pull_request_commits")
@@ -319,12 +332,11 @@ class TestOrchestration:
         """Test orchestrator runs only enabled checks."""
         mock_load_commits.return_value = []
         config = Mock()
-        config.check_issue_linking = False
         config.check_issue_reference = False
-        config.require_assignee = False
+        config.check_issue_assignee = False
         config.target_branches = []
         config.check_commit_signature = True
-        config.check_sign_off = False
+        config.check_commit_sign_off = False
 
         signature_check = Mock()
         signature_check.name = "commit_signature"

@@ -9,6 +9,15 @@ from github.Issue import Issue as GitHubIssue
 
 from check_contribution_action.checks.base import CheckContext
 from check_contribution_action.config import Config
+from check_contribution_action.failure_reasons import (
+    ASSIGNEE_MISMATCH_REASON,
+    GITHUB_CLOSING_LINK_ERROR,
+    ISSUE_HAS_NO_ASSIGNEE_REASON,
+    NO_CORRESPONDING_ISSUE_REASON,
+    NO_ISSUE_FOR_ASSIGNEE_REASON,
+    NO_LINKED_ISSUE_REASON,
+    TARGET_BRANCH_REASON_PREFIX,
+)
 from check_contribution_action.models import CheckResult
 
 logger = logging.getLogger(__name__)
@@ -75,28 +84,41 @@ class IssueLookupResult:
     issue_number: int | None = None
 
 
+def success_check_name(config: Config) -> str:
+    """Return the public check name for a successful issue-related result."""
+    if config.check_issue_reference:
+        return "issue_reference"
+    if config.check_issue_assignee:
+        return "issue_assignee"
+    return "target_branch"
+
+
 class IssueCheck:
-    """Validate issue linkage, references, assignee, and target branch rules."""
+    """Validate issue linkage, references, assignee, and target branch rules.
+
+    Enabled validations run in order: target branch, issue resolution, then
+    assignee. Returns a single :class:`CheckResult` for the first failure or
+    for combined success.
+    """
 
     @property
     def name(self) -> str:
-        """Return the check identifier."""
+        """Return the check identifier used for logging."""
         return "issue"
 
     def is_enabled(self, config: Config) -> bool:
         """Return whether any issue-related validation is enabled."""
         return (
-            config.check_issue_linking
-            or config.check_issue_reference
-            or config.require_assignee
-            or bool(config.target_branches)
+            config.check_issue_reference
+            or config.check_issue_assignee
+            or config.check_target_branch
         )
 
     def run(self, context: CheckContext) -> CheckResult:
         """Validate PR issue requirements configured in the action inputs."""
         if context.pull_request is None or context.github is None:
             return CheckResult(
-                name=self.name,
+                name=success_check_name(context.config),
                 passed=False,
                 reason="Missing pull request context",
             )
@@ -111,80 +133,99 @@ class IssueCheck:
 
         if pull_request.user.type == "Bot" and not config.validate_bot_authors:
             logger.info("Skipping validation for bot user: %s", pull_request.user.login)
-            return CheckResult(name=self.name, passed=True, reason="Bot user")
+            return CheckResult(
+                name=success_check_name(config),
+                passed=True,
+                reason="Bot user",
+            )
 
         if pull_request.user.login in config.skip_users:
             logger.info(
                 "Skipping validation for user in skip list: %s",
                 pull_request.user.login,
             )
-            return CheckResult(name=self.name, passed=True, reason="User in skip list")
+            return CheckResult(
+                name=success_check_name(config),
+                passed=True,
+                reason="User in skip list",
+            )
 
-        if config.target_branches:
+        if config.check_target_branch:
             branch_result = self.validate_target_branch(pull_request, config)
             if not branch_result.passed:
                 return branch_result
 
-        if not (
-            config.check_issue_linking
-            or config.check_issue_reference
-            or config.require_assignee
-        ):
+        if not (config.check_issue_reference or config.check_issue_assignee):
             return CheckResult(
-                name=self.name, passed=True, reason="Branch validation passed"
+                name="target_branch",
+                passed=True,
+                reason="Branch validation passed",
             )
 
-        issue: GitHubIssue | None = None
-        linking_result: IssueLookupResult | None = None
+        lookup_result = self.resolve_corresponding_issue(pull_request, github)
+        if not lookup_result.passed:
+            return self.to_check_result(lookup_result, config)
 
-        if config.check_issue_linking or config.require_assignee:
-            linking_result = self.validate_issue_linking(pull_request, github)
-            issue = linking_result.issue
-            if (
-                not issue
-                and linking_result.reason
-                and linking_result.reason != "No linked issue"
-            ):
-                return self.to_check_result(linking_result)
-
-        if not issue and config.check_issue_reference:
-            reference_result = self.validate_issue_reference(pull_request)
-            if reference_result.passed and reference_result.issue_number:
-                issue = self.get_issue_by_number(
-                    pull_request, github, reference_result.issue_number
-                )
-            elif not config.check_issue_linking and not config.require_assignee:
-                return self.to_check_result(reference_result)
-
-        if not issue:
-            if linking_result and linking_result.reason not in (
-                None,
-                "No linked issue",
-            ):
-                return self.to_check_result(linking_result)
-
-            if config.check_issue_reference:
-                return CheckResult(
-                    name=self.name,
+        issue = lookup_result.issue
+        if issue is None:
+            return self.to_check_result(
+                IssueLookupResult(
                     passed=False,
-                    reason=(
-                        "No linked issue and no valid closing issue reference "
-                        "in PR description"
-                    ),
-                )
-            return CheckResult(
-                name=self.name,
-                passed=False,
-                reason="No linked issue",
+                    reason=NO_CORRESPONDING_ISSUE_REASON,
+                ),
+                config,
             )
 
-        if config.require_assignee:
+        if config.check_issue_assignee:
             assignee_result = self.validate_assignee(pull_request, issue)
             if not assignee_result.passed:
                 return assignee_result
 
         logger.info("PR #%s issue validation passed", pull_request.number)
-        return CheckResult(name=self.name, passed=True, reason="All validations passed")
+        return CheckResult(
+            name=success_check_name(config),
+            passed=True,
+            reason="All validations passed",
+        )
+
+    def resolve_corresponding_issue(
+        self, pull_request: PullRequest, github: Github
+    ) -> IssueLookupResult:
+        """Find the PR's corresponding issue via GitHub linking or description reference."""
+        linking_result = self.validate_github_closing_link(pull_request, github)
+        if linking_result.issue:
+            return linking_result
+
+        if linking_result.reason and linking_result.reason != NO_LINKED_ISSUE_REASON:
+            return linking_result
+
+        reference_result = self.parse_closing_reference_in_description(pull_request)
+        if not reference_result.passed or reference_result.issue_number is None:
+            return IssueLookupResult(
+                passed=False,
+                reason=NO_CORRESPONDING_ISSUE_REASON,
+            )
+
+        issue = self.get_issue_by_number(
+            pull_request, github, reference_result.issue_number
+        )
+        if issue is None:
+            logger.warning(
+                "PR #%s references issue #%s but it was not found",
+                pull_request.number,
+                reference_result.issue_number,
+            )
+            return IssueLookupResult(
+                passed=False,
+                reason=NO_CORRESPONDING_ISSUE_REASON,
+            )
+
+        logger.info(
+            "PR #%s resolved issue #%s from description reference",
+            pull_request.number,
+            issue.number,
+        )
+        return IssueLookupResult(passed=True, issue=issue)
 
     def validate_target_branch(
         self, pull_request: PullRequest, config: Config
@@ -197,7 +238,7 @@ class IssueCheck:
 
         if not config.target_branches:
             return CheckResult(
-                name=self.name,
+                name="target_branch",
                 passed=True,
                 reason="No branch restrictions",
             )
@@ -218,7 +259,7 @@ class IssueCheck:
         if target_branch in allowed_branches:
             logger.info("Target branch '%s' is in allowed list", target_branch)
             return CheckResult(
-                name=self.name,
+                name="target_branch",
                 passed=True,
                 reason="Target branch allowed",
             )
@@ -230,13 +271,15 @@ class IssueCheck:
             sorted(allowed_branches),
         )
         return CheckResult(
-            name=self.name,
+            name="target_branch",
             passed=False,
-            reason=f"PR must target one of the allowed branches: {allowed}",
+            reason=f"{TARGET_BRANCH_REASON_PREFIX}: {allowed}",
         )
 
-    def validate_issue_reference(self, pull_request: PullRequest) -> IssueLookupResult:
-        """Validate that the PR description contains a closing issue reference."""
+    def parse_closing_reference_in_description(
+        self, pull_request: PullRequest
+    ) -> IssueLookupResult:
+        """Parse a closing issue reference from the PR description."""
         description = pull_request.body or ""
         if not description.strip():
             logger.warning(
@@ -245,10 +288,7 @@ class IssueCheck:
             )
             return IssueLookupResult(
                 passed=False,
-                reason=(
-                    "No linked issue and no valid closing issue reference "
-                    "in PR description"
-                ),
+                reason=NO_CORRESPONDING_ISSUE_REASON,
             )
 
         match = CLOSING_REFERENCE_RE.search(description)
@@ -270,12 +310,10 @@ class IssueCheck:
         )
         return IssueLookupResult(
             passed=False,
-            reason=(
-                "No linked issue and no valid closing issue reference in PR description"
-            ),
+            reason=NO_CORRESPONDING_ISSUE_REASON,
         )
 
-    def validate_issue_linking(
+    def validate_github_closing_link(
         self, pull_request: PullRequest, github: Github
     ) -> IssueLookupResult:
         """Validate that the PR is linked to an issue using GraphQL."""
@@ -284,7 +322,7 @@ class IssueCheck:
             if linked_issues is None:
                 return IssueLookupResult(
                     passed=False,
-                    reason="Error checking issue linking",
+                    reason=GITHUB_CLOSING_LINK_ERROR,
                 )
             if linked_issues:
                 issue_number = linked_issues[0]["number"]
@@ -296,7 +334,7 @@ class IssueCheck:
                 )
                 return IssueLookupResult(passed=True, issue=issue)
             logger.warning("PR #%s is not linked to any issue", pull_request.number)
-            return IssueLookupResult(passed=False, reason="No linked issue")
+            return IssueLookupResult(passed=False, reason=NO_LINKED_ISSUE_REASON)
         except Exception as error:
             logger.error(
                 "Error checking issue linking for PR #%s: %s",
@@ -305,7 +343,7 @@ class IssueCheck:
             )
             return IssueLookupResult(
                 passed=False,
-                reason="Error checking issue linking",
+                reason=GITHUB_CLOSING_LINK_ERROR,
             )
 
     def get_issue_by_number(
@@ -364,18 +402,18 @@ class IssueCheck:
         """Validate that the issue assignee matches the PR author."""
         if issue is None:
             return CheckResult(
-                name=self.name,
+                name="issue_assignee",
                 passed=False,
-                reason="No issue to check assignee",
+                reason=NO_ISSUE_FOR_ASSIGNEE_REASON,
             )
 
         assignees = issue.assignees
         if not assignees:
             logger.warning("Issue #%s has no assignees", issue.number)
             return CheckResult(
-                name=self.name,
+                name="issue_assignee",
                 passed=False,
-                reason="Issue has no assignee",
+                reason=ISSUE_HAS_NO_ASSIGNEE_REASON,
             )
 
         author = pull_request.user.login
@@ -386,7 +424,9 @@ class IssueCheck:
                 issue.number,
                 author,
             )
-            return CheckResult(name=self.name, passed=True, reason="Assignee matches")
+            return CheckResult(
+                name="issue_assignee", passed=True, reason="Assignee matches"
+            )
 
         logger.warning(
             "Issue #%s assignees %s do not include PR author %s",
@@ -395,17 +435,26 @@ class IssueCheck:
             author,
         )
         return CheckResult(
-            name=self.name,
+            name="issue_assignee",
             passed=False,
-            reason="Assignee mismatch",
+            reason=ASSIGNEE_MISMATCH_REASON,
         )
 
-    def to_check_result(self, result: IssueLookupResult) -> CheckResult:
+    def to_check_result(self, result: IssueLookupResult, config: Config) -> CheckResult:
         """Convert an internal issue lookup result to a check result."""
+        check_name = (
+            "issue_reference" if config.check_issue_reference else "issue_assignee"
+        )
+        reason = result.reason
+        if not config.check_issue_reference:
+            if reason == NO_CORRESPONDING_ISSUE_REASON:
+                reason = NO_ISSUE_FOR_ASSIGNEE_REASON
+            elif reason == GITHUB_CLOSING_LINK_ERROR:
+                reason = NO_ISSUE_FOR_ASSIGNEE_REASON
         return CheckResult(
-            name=self.name,
+            name=check_name,
             passed=result.passed,
-            reason=result.reason,
+            reason=reason,
         )
 
 

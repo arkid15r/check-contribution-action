@@ -4,12 +4,13 @@ import logging
 
 from github import PullRequest
 
+from check_contribution_action.close_triggers import (
+    failure_matches_close_trigger,
+)
 from check_contribution_action.config import Config
 from check_contribution_action.models import CheckResult, ValidationResult
 
 logger = logging.getLogger(__name__)
-
-ASSIGNEE_CLOSE_REASONS = {"Assignee mismatch", "Issue has no assignee"}
 
 
 class PrManager:
@@ -31,7 +32,7 @@ class PrManager:
                 close_success = self.close_pr(pull_request)
                 if close_success:
                     logger.info(
-                        "PR #%s closed due to assignee validation failure",
+                        "PR #%s closed due to configured validation failure",
                         pull_request.number,
                     )
                 else:
@@ -52,12 +53,13 @@ class PrManager:
             return False
 
     def should_close_pr(self, validation_result: ValidationResult) -> bool:
-        """Return whether the PR should be closed for assignee-related failures."""
-        if not self.config.close_pr_on_assignee_mismatch:
+        """Return whether the PR should be closed for configured failure triggers."""
+        if not self.config.close_on:
             return False
         return any(
-            result.name == "issue" and result.reason in ASSIGNEE_CLOSE_REASONS
+            failure_matches_close_trigger(result, trigger)
             for result in validation_result.failed_results
+            for trigger in self.config.close_on
         )
 
     def build_failure_message(self, validation_result: ValidationResult) -> str:
@@ -72,31 +74,9 @@ class PrManager:
 
     def get_check_message(self, result: CheckResult) -> str:
         """Map a failed check result to a user-facing message."""
-        if result.name == "issue":
-            return self.get_issue_message(result)
-        if result.name == "commit_signature":
-            return self.config.unsigned_commits_message
-        if result.name == "sign_off":
-            if result.reason == "Sign-off mismatch":
-                return self.config.sign_off_mismatch_message
-            return self.config.missing_sign_off_message
+        if result.name in self.config.errors:
+            return self.config.errors[result.name]
         return result.reason or "Validation failed"
-
-    def get_issue_message(self, result: CheckResult) -> str:
-        """Map issue check failure reasons to configured messages."""
-        if result.reason == "No linked issue":
-            return self.config.no_issue_message
-        if result.reason in ASSIGNEE_CLOSE_REASONS:
-            return self.config.no_assignee_message
-        if result.reason and result.reason.startswith(
-            "PR must target one of the allowed branches"
-        ):
-            return self.config.invalid_branch_message
-        if result.reason == (
-            "No linked issue and no valid closing issue reference in PR description"
-        ):
-            return self.config.no_issue_message
-        return result.reason or self.config.no_issue_message
 
     def post_comment(self, pull_request: PullRequest, message: str) -> bool:
         """Post a comment on the pull request."""

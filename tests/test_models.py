@@ -10,7 +10,7 @@ class TestModels:
         """Test filtering failed check results."""
         results = [
             CheckResult(name="signature", passed=True),
-            CheckResult(name="sign_off", passed=False, reason="missing"),
+            CheckResult(name="commit_sign_off", passed=False, reason="missing"),
         ]
         validation = ValidationResult(passed=False, results=results)
 

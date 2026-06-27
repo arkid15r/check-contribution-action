@@ -5,7 +5,13 @@ from unittest.mock import patch
 
 import pytest
 
+from check_contribution_action.check_for import DEFAULT_ERROR_MESSAGES
 from check_contribution_action.config import Config
+
+BASE_ENV = {
+    "INPUT_GITHUB_TOKEN": "test_token",
+    "INPUT_CHECK_FOR": "issue_reference",
+}
 
 
 class TestConfig:
@@ -19,52 +25,44 @@ class TestConfig:
             ):
                 Config()
 
+    def test_check_for_missing(self):
+        """Test that missing check_for raises ValueError."""
+        with patch.dict(os.environ, {"INPUT_GITHUB_TOKEN": "test_token"}, clear=True):
+            with pytest.raises(
+                ValueError, match="Required input 'check_for' is not provided"
+            ):
+                Config()
+
     def test_required_input_present(self):
-        """Test that required input is loaded correctly."""
-        with patch.dict(os.environ, {"INPUT_GITHUB_TOKEN": "test_token"}):
+        """Test that required inputs are loaded correctly."""
+        with patch.dict(os.environ, BASE_ENV):
             config = Config()
             assert config.github_token == "test_token"
+            assert config.check_for == frozenset({"issue_reference"})
 
     def test_optional_inputs_with_defaults(self):
         """Test that optional inputs use correct defaults."""
-        with patch.dict(os.environ, {"INPUT_GITHUB_TOKEN": "test_token"}):
+        with patch.dict(os.environ, BASE_ENV):
             config = Config()
             assert config.skip_users == []
-            assert config.check_issue_linking is False
-            assert config.check_issue_reference is False
-            assert config.require_assignee is False
+            assert config.check_for == frozenset({"issue_reference"})
+            assert config.check_issue_reference is True
+            assert config.check_issue_assignee is False
             assert config.check_commit_signature is False
-            assert config.check_sign_off is False
+            assert config.check_commit_sign_off is False
+            assert config.check_target_branch is False
             assert config.sign_off_strict_match is False
-            assert config.close_pr_on_assignee_mismatch is False
+            assert config.close_on == frozenset()
             assert config.validate_bot_authors is False
-            assert config.has_enabled_checks is False
-            assert (
-                config.no_issue_message
-                == "This PR must be linked to an issue before it can be merged."
-            )
-            assert (
-                config.no_assignee_message
-                == "The linked issue must be assigned to the PR author before this PR can be merged."
-            )
-            assert (
-                config.unsigned_commits_message == "One or more commits are not signed."
-            )
-            assert (
-                config.missing_sign_off_message
-                == "One or more commits are missing a Signed-off-by trailer."
-            )
-            assert (
-                config.sign_off_mismatch_message
-                == "One or more Signed-off-by trailers do not match the commit author."
-            )
+            assert config.has_enabled_checks is True
+            assert config.errors == DEFAULT_ERROR_MESSAGES
 
     def test_skip_users_parsing(self):
         """Test parsing of comma-separated skip users."""
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_SKIP_USERS": "user1, user2, user3",
             },
         ):
@@ -73,76 +71,101 @@ class TestConfig:
 
     def test_skip_users_empty(self):
         """Test handling of empty skip users."""
-        with patch.dict(
-            os.environ, {"INPUT_GITHUB_TOKEN": "test_token", "INPUT_SKIP_USERS": ""}
-        ):
+        with patch.dict(os.environ, {**BASE_ENV, "INPUT_SKIP_USERS": ""}):
             config = Config()
             assert config.skip_users == []
 
-    def test_boolean_inputs(self):
-        """Test parsing of boolean inputs."""
+    def test_check_for_parsing(self):
+        """Test parsing of check_for values."""
         with patch.dict(
             os.environ,
             {
                 "INPUT_GITHUB_TOKEN": "test_token",
-                "INPUT_CHECK_ISSUE_LINKING": "true",
-                "INPUT_CHECK_COMMIT_SIGNATURE": "true",
-                "INPUT_CHECK_SIGN_OFF": "true",
+                "INPUT_CHECK_FOR": "commit_sign_off, commit_signature, issue_reference",
                 "INPUT_SIGN_OFF_STRICT_MATCH": "true",
-                "INPUT_CLOSE_PR_ON_ASSIGNEE_MISMATCH": "true",
             },
         ):
             config = Config()
-            assert config.check_issue_linking is True
+            assert config.check_for == frozenset(
+                {"issue_reference", "commit_signature", "commit_sign_off"}
+            )
+            assert config.check_issue_reference is True
             assert config.check_commit_signature is True
-            assert config.check_sign_off is True
+            assert config.check_commit_sign_off is True
             assert config.sign_off_strict_match is True
-            assert config.close_pr_on_assignee_mismatch is True
             assert config.has_enabled_checks is True
             assert config.enabled_check_names() == [
-                "issue_linking",
+                "commit_sign_off",
                 "commit_signature",
-                "sign_off",
+                "issue_reference",
             ]
 
-    def test_check_issue_reference_input(self):
-        """Test parsing of check_issue_reference input."""
+    def test_check_for_ignores_unknown_values(self):
+        """Test unknown check_for values are ignored."""
+        with patch.dict(
+            os.environ,
+            {
+                **BASE_ENV,
+                "INPUT_CHECK_FOR": "issue_reference,not_real",
+            },
+        ):
+            config = Config()
+            assert config.check_for == frozenset({"issue_reference"})
+
+    def test_check_for_issue_reference(self):
+        """Test issue_reference enables the corresponding check."""
         with patch.dict(
             os.environ,
             {
                 "INPUT_GITHUB_TOKEN": "test_token",
-                "INPUT_CHECK_ISSUE_REFERENCE": "true",
+                "INPUT_CHECK_FOR": "issue_reference",
             },
         ):
             config = Config()
             assert config.check_issue_reference is True
             assert config.has_enabled_checks is True
 
+    def test_close_on_parsing(self):
+        """Test parsing of close_on triggers."""
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
-                "INPUT_CHECK_ISSUE_REFERENCE": "false",
+                **BASE_ENV,
+                "INPUT_CHECK_FOR": "commit_signature, issue_assignee, issue_reference",
+                "INPUT_CLOSE_ON": "issue_assignee, commit_signature",
             },
         ):
             config = Config()
-            assert config.check_issue_reference is False
+            assert config.close_on == frozenset({"issue_assignee", "commit_signature"})
 
-    def test_custom_messages(self):
+    def test_close_on_ignores_unknown_triggers(self):
+        """Test unknown close_on values are ignored."""
+        with patch.dict(
+            os.environ,
+            {
+                **BASE_ENV,
+                "INPUT_CHECK_FOR": "issue_assignee, issue_reference",
+                "INPUT_CLOSE_ON": "issue_assignee,not_real",
+            },
+        ):
+            config = Config()
+            assert config.close_on == frozenset({"issue_assignee"})
+
+    def test_custom_errors(self):
         """Test custom error messages."""
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
-                "INPUT_NO_ISSUE_MESSAGE": "Custom no issue message",
-                "INPUT_NO_ASSIGNEE_MESSAGE": "Custom assignee message",
-                "INPUT_UNSIGNED_COMMITS_MESSAGE": "Custom unsigned message",
+                **BASE_ENV,
+                "INPUT_ERROR_ISSUE_REFERENCE": "Custom reference message",
+                "INPUT_ERROR_ISSUE_ASSIGNEE": "Custom assignee message",
+                "INPUT_ERROR_COMMIT_SIGNATURE": "Custom signature message",
             },
         ):
             config = Config()
-            assert config.no_issue_message == "Custom no issue message"
-            assert config.no_assignee_message == "Custom assignee message"
-            assert config.unsigned_commits_message == "Custom unsigned message"
+            assert config.errors["issue_reference"] == "Custom reference message"
+            assert config.errors["issue_assignee"] == "Custom assignee message"
+            assert config.errors["commit_signature"] == "Custom signature message"
 
     def test_skip_users_file_path_only(self, tmp_path):
         """Test parsing of skip users from file only."""
@@ -152,7 +175,7 @@ class TestConfig:
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_SKIP_USERS_FILE_PATH": str(skip_users_file),
             },
         ):
@@ -167,7 +190,7 @@ class TestConfig:
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_SKIP_USERS": "user1, user2",
                 "INPUT_SKIP_USERS_FILE_PATH": str(skip_users_file),
             },
@@ -180,7 +203,7 @@ class TestConfig:
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_SKIP_USERS_FILE_PATH": "non_existent_file.txt",
             },
         ):
@@ -195,7 +218,7 @@ class TestConfig:
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_SKIP_USERS_FILE_PATH": str(skip_users_file),
             },
         ):
@@ -204,7 +227,7 @@ class TestConfig:
 
     def test_resolve_file_path_preserves_github_workspace_path(self):
         """Test skip users file paths under /github/workspace are kept as-is."""
-        with patch.dict(os.environ, {"INPUT_GITHUB_TOKEN": "test_token"}):
+        with patch.dict(os.environ, BASE_ENV):
             config = Config()
             path = config.resolve_file_path("/github/workspace/config/skip_users.txt")
             assert path == "/github/workspace/config/skip_users.txt"
@@ -217,7 +240,7 @@ class TestConfig:
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_SKIP_USERS_FILE_PATH": str(skip_users_file),
             },
         ):
@@ -230,47 +253,78 @@ class TestConfig:
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_TARGET_BRANCHES": "main\ndevelop\n",
             },
         ):
             config = Config()
             assert config.target_branches == ["main", "develop"]
 
-    def test_require_assignee_enables_check(self):
-        """Test that require_assignee counts as an enabled check."""
+    def test_issue_assignee_enables_check(self):
+        """Test that issue_assignee in check_for counts as an enabled check."""
         with patch.dict(
             os.environ,
             {
                 "INPUT_GITHUB_TOKEN": "test_token",
-                "INPUT_REQUIRE_ASSIGNEE": "true",
+                "INPUT_CHECK_FOR": "issue_assignee",
             },
         ):
             config = Config()
             assert config.has_enabled_checks is True
-            assert "assignee" in config.enabled_check_names()
+            assert "issue_assignee" in config.enabled_check_names()
 
     def test_validate_bot_authors_input(self):
         """Test validate_bot_authors boolean input."""
         with patch.dict(
             os.environ,
             {
-                "INPUT_GITHUB_TOKEN": "test_token",
+                **BASE_ENV,
                 "INPUT_VALIDATE_BOT_AUTHORS": "true",
             },
         ):
             config = Config()
             assert config.validate_bot_authors is True
 
-    def test_target_branches_enables_check(self):
-        """Test that target_branches counts as an enabled check."""
+    def test_validate_close_on_rejects_disabled_checks(self):
+        """Test close_on raises when triggers are not enabled in check_for."""
+        with patch.dict(
+            os.environ,
+            {
+                **BASE_ENV,
+                "INPUT_CHECK_FOR": "issue_reference",
+                "INPUT_CLOSE_ON": "commit_signature",
+            },
+        ):
+            with pytest.raises(
+                ValueError,
+                match="close_on includes checks that are not enabled in check_for",
+            ):
+                Config()
+
+    def test_target_branch_requires_target_branches(self):
+        """Test target_branch check requires a non-empty target_branches list."""
         with patch.dict(
             os.environ,
             {
                 "INPUT_GITHUB_TOKEN": "test_token",
+                "INPUT_CHECK_FOR": "target_branch",
+            },
+        ):
+            with pytest.raises(
+                ValueError,
+                match="check_for includes target_branch but target_branches is not set",
+            ):
+                Config()
+
+        with patch.dict(
+            os.environ,
+            {
+                "INPUT_GITHUB_TOKEN": "test_token",
+                "INPUT_CHECK_FOR": "target_branch",
                 "INPUT_TARGET_BRANCHES": "main\n",
             },
         ):
             config = Config()
+            assert config.check_target_branch is True
             assert config.has_enabled_checks is True
-            assert "target_branches" in config.enabled_check_names()
+            assert "target_branch" in config.enabled_check_names()

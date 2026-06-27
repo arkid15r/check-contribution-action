@@ -4,6 +4,10 @@ import logging
 
 from check_contribution_action.checks.base import CheckContext
 from check_contribution_action.config import Config
+from check_contribution_action.failure_reasons import (
+    MISSING_SIGN_OFF_REASON,
+    SIGN_OFF_MISMATCH_REASON,
+)
 from check_contribution_action.models import CheckResult, CommitInfo
 
 logger = logging.getLogger(__name__)
@@ -15,11 +19,11 @@ class SignOffCheck:
     @property
     def name(self) -> str:
         """Return the check identifier."""
-        return "sign_off"
+        return "commit_sign_off"
 
     def is_enabled(self, config: Config) -> bool:
         """Return whether sign-off checking is enabled."""
-        return config.check_sign_off
+        return config.check_commit_sign_off
 
     def run(self, context: CheckContext) -> CheckResult:
         """Verify sign-off trailers on all commits in the context."""
@@ -37,7 +41,7 @@ class SignOffCheck:
             return CheckResult(
                 name=self.name,
                 passed=False,
-                reason="Missing sign-off",
+                reason=MISSING_SIGN_OFF_REASON,
                 details=missing_sign_off,
             )
 
@@ -54,7 +58,7 @@ class SignOffCheck:
                 return CheckResult(
                     name=self.name,
                     passed=False,
-                    reason="Sign-off mismatch",
+                    reason=SIGN_OFF_MISMATCH_REASON,
                     details=mismatched,
                 )
 

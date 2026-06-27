@@ -12,21 +12,22 @@ def mock_config():
     """Create a mock configuration for testing."""
     config = Mock(spec=Config)
     config.skip_users = ["testuser1", "testuser2"]
-    config.check_issue_linking = True
-    config.check_issue_reference = False
-    config.require_assignee = True
+    config.check_issue_reference = True
+    config.check_issue_assignee = True
     config.check_commit_signature = False
-    config.check_sign_off = False
+    config.check_commit_sign_off = False
     config.sign_off_strict_match = False
-    config.close_pr_on_assignee_mismatch = False
+    config.close_on = frozenset()
     config.validate_bot_authors = False
-    config.no_issue_message = "No issue message"
-    config.no_assignee_message = "No assignee message"
+    config.errors = {
+        "issue_reference": "Issue reference message",
+        "issue_assignee": "Issue assignee message",
+        "target_branch": "Target branch message",
+        "commit_signature": "Commit signature message",
+        "commit_sign_off": "Commit sign-off message",
+    }
     config.target_branches = []
-    config.invalid_branch_message = "Invalid branch message"
-    config.unsigned_commits_message = "Unsigned commits message"
-    config.missing_sign_off_message = "Missing sign-off message"
-    config.sign_off_mismatch_message = "Sign-off mismatch message"
+    config.check_target_branch = False
     config.has_enabled_checks = False
     config.enabled_check_names.return_value = []
     return config

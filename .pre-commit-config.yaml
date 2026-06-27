@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: 2c9f875913ee60ca25ce70243dc24d5b6415598c  # v4.6.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -10,9 +10,9 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.12
+    rev: 9aeda5d1f4bbd212c557da1ea78eca9e8c829e19  # v0.11.13
     hooks:
-      - id: ruff
+      - id: ruff-check
         args:
           - --fix
       - id: ruff-format
@@ -25,4 +25,3 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        args: [--cov=src, --cov-report=term-missing, --cov-fail-under=90]

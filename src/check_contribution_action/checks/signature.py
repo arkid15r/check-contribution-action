@@ -4,6 +4,7 @@ import logging
 
 from check_contribution_action.checks.base import CheckContext
 from check_contribution_action.config import Config
+from check_contribution_action.failure_reasons import UNSIGNED_COMMITS_REASON
 from check_contribution_action.models import CheckResult
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class SignatureCheck:
             return CheckResult(
                 name=self.name,
                 passed=False,
-                reason="Unsigned commits",
+                reason=UNSIGNED_COMMITS_REASON,
                 details=unsigned_shas,
             )
 

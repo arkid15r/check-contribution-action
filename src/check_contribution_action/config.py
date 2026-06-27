@@ -4,6 +4,8 @@ import logging
 import os
 from pathlib import Path
 
+from check_contribution_action.check_for import CHECK_FOR_NAMES, DEFAULT_ERROR_MESSAGES
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,54 +16,31 @@ class Config:
         """Initialize configuration from environment variables."""
         self.github_token = self.get_required_input("github_token")
         self.skip_users = self.parse_skip_users()
-        self.check_issue_linking = self.get_boolean_input("check_issue_linking", False)
-        self.check_issue_reference = self.get_boolean_input(
-            "check_issue_reference", False
+        self.target_branches = self.parse_target_branches()
+        self.check_for = self.parse_check_for()
+        self.check_issue_reference = "issue_reference" in self.check_for
+        self.check_issue_assignee = "issue_assignee" in self.check_for
+        self.check_commit_signature = "commit_signature" in self.check_for
+        self.check_commit_sign_off = "commit_sign_off" in self.check_for
+        self.check_target_branch = "target_branch" in self.check_for and bool(
+            self.target_branches
         )
-        self.require_assignee = self.get_boolean_input("require_assignee", False)
-        self.check_commit_signature = self.get_boolean_input(
-            "check_commit_signature", False
-        )
-        self.check_sign_off = self.get_boolean_input("check_sign_off", False)
         self.sign_off_strict_match = self.get_boolean_input(
             "sign_off_strict_match", False
         )
-        self.close_pr_on_assignee_mismatch = self.get_boolean_input(
-            "close_pr_on_assignee_mismatch", False
-        )
+        self.close_on = self.parse_close_on()
         self.validate_bot_authors = self.get_boolean_input(
             "validate_bot_authors", False
         )
-        self.no_issue_message = self.get_input(
-            "no_issue_message",
-            "This PR must be linked to an issue before it can be merged.",
-        )
-        self.no_assignee_message = self.get_input(
-            "no_assignee_message",
-            "The linked issue must be assigned to the PR author before this PR can be merged.",
-        )
-        self.target_branches = self.parse_target_branches()
-        self.invalid_branch_message = self.get_input(
-            "invalid_branch_message",
-            "This PR must target one of the allowed branches.",
-        )
-        self.unsigned_commits_message = self.get_input(
-            "unsigned_commits_message",
-            "One or more commits are not signed.",
-        )
-        self.missing_sign_off_message = self.get_input(
-            "missing_sign_off_message",
-            "One or more commits are missing a Signed-off-by trailer.",
-        )
-        self.sign_off_mismatch_message = self.get_input(
-            "sign_off_mismatch_message",
-            "One or more Signed-off-by trailers do not match the commit author.",
-        )
+        self.errors = self.load_errors()
+        self.validate_enabled_checks()
+        self.validate_close_on()
 
         logger.info(
-            "Configuration loaded: skip_users=%s, enabled_checks=%s",
+            "Configuration loaded: skip_users=%s, enabled_checks=%s, close_on=%s",
             self.skip_users,
             self.enabled_check_names(),
+            sorted(self.close_on),
         )
 
     @property
@@ -71,20 +50,10 @@ class Config:
 
     def enabled_check_names(self) -> list[str]:
         """Return names of enabled contribution checks."""
-        names: list[str] = []
-        if self.check_issue_linking:
-            names.append("issue_linking")
-        if self.check_issue_reference:
-            names.append("issue_reference")
-        if self.require_assignee:
-            names.append("assignee")
-        if self.check_commit_signature:
-            names.append("commit_signature")
-        if self.check_sign_off:
-            names.append("sign_off")
-        if self.target_branches:
-            names.append("target_branches")
-        return names
+        enabled = set(self.check_for)
+        if "target_branch" in enabled and not self.check_target_branch:
+            enabled.discard("target_branch")
+        return sorted(enabled)
 
     def get_required_input(self, name: str) -> str:
         """Get a required input from environment variables."""
@@ -101,6 +70,37 @@ class Config:
         """Get a boolean input from environment variables."""
         value = self.get_input(name, str(default)).lower()
         return value in ("true", "1", "yes", "on")
+
+    def validate_enabled_checks(self) -> None:
+        """Ensure check_for enables at least one runnable contribution check."""
+        if not self.enabled_check_names():
+            if "target_branch" in self.check_for:
+                raise ValueError(
+                    "check_for includes target_branch but target_branches is not set"
+                )
+            raise ValueError(
+                "check_for must include at least one supported check: "
+                f"{', '.join(sorted(CHECK_FOR_NAMES))}"
+            )
+
+    def validate_close_on(self) -> None:
+        """Reject close_on triggers that are not enabled in check_for."""
+        if not self.close_on:
+            return
+        enabled = set(self.enabled_check_names())
+        extra = self.close_on - enabled
+        if extra:
+            raise ValueError(
+                "close_on includes checks that are not enabled in check_for: "
+                f"{', '.join(sorted(extra))}"
+            )
+
+    def load_errors(self) -> dict[str, str]:
+        """Load user-facing failure messages keyed by check name."""
+        return {
+            name: self.get_input(f"error_{name}", DEFAULT_ERROR_MESSAGES[name])
+            for name in CHECK_FOR_NAMES
+        }
 
     def resolve_file_path(self, file_path: str) -> str:
         """Resolve file path relative to GitHub workspace if needed."""
@@ -142,6 +142,48 @@ class Config:
         logger.info("Skip users configured: %s", unique_users)
 
         return unique_users
+
+    def parse_check_for(self) -> frozenset[str]:
+        """Parse comma-separated contribution checks to enable."""
+        checks_str = self.get_required_input("check_for")
+        checks = {
+            check.strip().lower() for check in checks_str.split(",") if check.strip()
+        }
+
+        unknown = checks - CHECK_FOR_NAMES
+        if unknown:
+            logger.warning(
+                "Ignoring unknown check_for values: %s",
+                sorted(unknown),
+            )
+            checks -= unknown
+
+        if not checks:
+            raise ValueError(
+                "check_for must include at least one supported check: "
+                f"{', '.join(sorted(CHECK_FOR_NAMES))}"
+            )
+
+        return frozenset(checks)
+
+    def parse_close_on(self) -> frozenset[str]:
+        """Parse comma-separated PR closure triggers."""
+        triggers_str = self.get_input("close_on", "")
+        triggers = {
+            trigger.strip().lower()
+            for trigger in triggers_str.split(",")
+            if trigger.strip()
+        }
+
+        unknown = triggers - CHECK_FOR_NAMES
+        if unknown:
+            logger.warning(
+                "Ignoring unknown close_on triggers: %s",
+                sorted(unknown),
+            )
+            triggers -= unknown
+
+        return frozenset(triggers)
 
     def parse_target_branches(self) -> list[str]:
         """Parse newline-separated target branches list."""

@@ -83,16 +83,16 @@ jobs:
       fail-fast: false
       matrix:
         case:
-          - issue-linking-pass
-          - issue-linking-fail
-          - issue-reference-pass
+          - commit-sign-off-fail
+          - commit-sign-off-pass
+          - commit-signature-fail
+          - issue-assignee-fail
+          - issue-linked-fail
+          - issue-linked-pass
           - issue-reference-fail
-          - assignee-fail
-          - sign-off-pass
-          - sign-off-fail
-          - signature-fail
-          - target-branch-pass
+          - issue-reference-pass
           - target-branch-fail
+          - target-branch-pass
 
     steps:
       - name: Checkout repository

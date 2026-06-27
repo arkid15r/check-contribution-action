@@ -2,6 +2,12 @@
 
 from unittest.mock import patch
 
+from check_contribution_action.failure_reasons import (
+    ASSIGNEE_MISMATCH_REASON,
+    ISSUE_HAS_NO_ASSIGNEE_REASON,
+    NO_CORRESPONDING_ISSUE_REASON,
+    UNSIGNED_COMMITS_REASON,
+)
 from check_contribution_action.models import CheckResult, ValidationResult
 from check_contribution_action.pr_manager import PrManager
 
@@ -21,9 +27,13 @@ class TestPrManager:
         self, mock_config, mock_pr
     ):
         """Test closing PR when assignee mismatch is configured."""
-        mock_config.close_pr_on_assignee_mismatch = True
+        mock_config.close_on = frozenset({"issue_assignee"})
         validation_result = make_validation_result(
-            CheckResult(name="issue", passed=False, reason="Assignee mismatch")
+            CheckResult(
+                name="issue_assignee",
+                passed=False,
+                reason=ASSIGNEE_MISMATCH_REASON,
+            )
         )
 
         pr_manager = PrManager(mock_config)
@@ -35,9 +45,13 @@ class TestPrManager:
 
     def test_handle_validation_failure_without_close(self, mock_config, mock_pr):
         """Test failure handling without closing the PR."""
-        mock_config.close_pr_on_assignee_mismatch = False
+        mock_config.close_on = frozenset()
         validation_result = make_validation_result(
-            CheckResult(name="issue", passed=False, reason="Assignee mismatch")
+            CheckResult(
+                name="issue_assignee",
+                passed=False,
+                reason=ASSIGNEE_MISMATCH_REASON,
+            )
         )
 
         pr_manager = PrManager(mock_config)
@@ -47,11 +61,15 @@ class TestPrManager:
         mock_pr.create_issue_comment.assert_called_once()
         mock_pr.edit.assert_not_called()
 
-    def test_does_not_close_for_non_assignee_failures(self, mock_config, mock_pr):
-        """Test PR is not closed for non-assignee validation failures."""
-        mock_config.close_pr_on_assignee_mismatch = True
+    def test_does_not_close_for_unconfigured_failures(self, mock_config, mock_pr):
+        """Test PR is not closed when the failure is not in close_on."""
+        mock_config.close_on = frozenset({"issue_assignee"})
         validation_result = make_validation_result(
-            CheckResult(name="issue", passed=False, reason="No linked issue")
+            CheckResult(
+                name="issue_reference",
+                passed=False,
+                reason=NO_CORRESPONDING_ISSUE_REASON,
+            )
         )
 
         pr_manager = PrManager(mock_config)
@@ -66,11 +84,11 @@ class TestPrManager:
             CheckResult(
                 name="commit_signature",
                 passed=False,
-                reason="Unsigned commits",
+                reason=UNSIGNED_COMMITS_REASON,
                 details=["abc123"],
             ),
             CheckResult(
-                name="sign_off",
+                name="commit_sign_off",
                 passed=False,
                 reason="Missing sign-off",
                 details=["def456"],
@@ -81,45 +99,62 @@ class TestPrManager:
         message = pr_manager.build_failure_message(validation_result)
 
         assert "commit_signature" in message
-        assert "sign_off" in message
+        assert "commit_sign_off" in message
         assert "abc123" in message
         assert "def456" in message
 
-    def test_get_issue_message_no_issue(self, mock_config):
-        """Test issue message mapping for missing linked issue."""
-        result = CheckResult(name="issue", passed=False, reason="No linked issue")
-        pr_manager = PrManager(mock_config)
-
-        assert pr_manager.get_issue_message(result) == mock_config.no_issue_message
-
-    def test_get_issue_message_assignee_mismatch(self, mock_config):
-        """Test issue message mapping for assignee mismatch."""
-        result = CheckResult(name="issue", passed=False, reason="Assignee mismatch")
-        pr_manager = PrManager(mock_config)
-
-        assert pr_manager.get_issue_message(result) == mock_config.no_assignee_message
-
-    def test_get_issue_message_invalid_branch(self, mock_config):
-        """Test issue message mapping for invalid branch."""
+    def test_get_check_message_issue_reference(self, mock_config):
+        """Test issue reference failures use the configured message."""
         result = CheckResult(
-            name="issue",
+            name="issue_reference",
+            passed=False,
+            reason=NO_CORRESPONDING_ISSUE_REASON,
+        )
+        pr_manager = PrManager(mock_config)
+
+        assert (
+            pr_manager.get_check_message(result)
+            == mock_config.errors["issue_reference"]
+        )
+
+    def test_get_check_message_issue_assignee(self, mock_config):
+        """Test assignee failures use the configured message."""
+        result = CheckResult(
+            name="issue_assignee",
+            passed=False,
+            reason=ASSIGNEE_MISMATCH_REASON,
+        )
+        pr_manager = PrManager(mock_config)
+
+        assert (
+            pr_manager.get_check_message(result) == mock_config.errors["issue_assignee"]
+        )
+
+    def test_get_check_message_target_branch(self, mock_config):
+        """Test target branch failures use the configured message."""
+        result = CheckResult(
+            name="target_branch",
             passed=False,
             reason="PR must target one of the allowed branches: main",
         )
         pr_manager = PrManager(mock_config)
 
         assert (
-            pr_manager.get_issue_message(result) == mock_config.invalid_branch_message
+            pr_manager.get_check_message(result) == mock_config.errors["target_branch"]
         )
 
-    def test_get_check_message_sign_off_mismatch(self, mock_config):
-        """Test sign-off mismatch uses configured message."""
-        result = CheckResult(name="sign_off", passed=False, reason="Sign-off mismatch")
+    def test_get_check_message_sign_off(self, mock_config):
+        """Test sign-off failures use the commit_sign_off message."""
+        result = CheckResult(
+            name="commit_sign_off",
+            passed=False,
+            reason="Sign-off mismatch",
+        )
         pr_manager = PrManager(mock_config)
 
         assert (
             pr_manager.get_check_message(result)
-            == mock_config.sign_off_mismatch_message
+            == mock_config.errors["commit_sign_off"]
         )
 
     def test_post_comment_success(self, mock_config, mock_pr):
@@ -152,7 +187,11 @@ class TestPrManager:
         """Test failure when comment posting fails."""
         mock_pr.create_issue_comment.side_effect = Exception("Comment API Error")
         validation_result = make_validation_result(
-            CheckResult(name="issue", passed=False, reason="No linked issue")
+            CheckResult(
+                name="issue_reference",
+                passed=False,
+                reason=NO_CORRESPONDING_ISSUE_REASON,
+            )
         )
 
         pr_manager = PrManager(mock_config)
@@ -160,9 +199,13 @@ class TestPrManager:
 
     def test_should_close_pr_for_issue_without_assignee(self, mock_config):
         """Test closure applies to issues with no assignee."""
-        mock_config.close_pr_on_assignee_mismatch = True
+        mock_config.close_on = frozenset({"issue_assignee"})
         validation_result = make_validation_result(
-            CheckResult(name="issue", passed=False, reason="Issue has no assignee")
+            CheckResult(
+                name="issue_assignee",
+                passed=False,
+                reason=ISSUE_HAS_NO_ASSIGNEE_REASON,
+            )
         )
         pr_manager = PrManager(mock_config)
 
@@ -170,10 +213,14 @@ class TestPrManager:
 
     def test_handle_validation_failure_close_pr_failure(self, mock_config, mock_pr):
         """Test failure handling when PR closure fails."""
-        mock_config.close_pr_on_assignee_mismatch = True
+        mock_config.close_on = frozenset({"issue_assignee"})
         mock_pr.edit.side_effect = Exception("Close API Error")
         validation_result = make_validation_result(
-            CheckResult(name="issue", passed=False, reason="Assignee mismatch")
+            CheckResult(
+                name="issue_assignee",
+                passed=False,
+                reason=ASSIGNEE_MISMATCH_REASON,
+            )
         )
 
         pr_manager = PrManager(mock_config)
@@ -185,7 +232,11 @@ class TestPrManager:
     def test_handle_validation_failure_unexpected_error(self, mock_config, mock_pr):
         """Test failure handling when an unexpected error occurs."""
         validation_result = make_validation_result(
-            CheckResult(name="issue", passed=False, reason="No linked issue")
+            CheckResult(
+                name="issue_reference",
+                passed=False,
+                reason=NO_CORRESPONDING_ISSUE_REASON,
+            )
         )
 
         pr_manager = PrManager(mock_config)
@@ -212,28 +263,31 @@ class TestPrManager:
 
         assert pr_manager.get_check_message(result) == "Validation failed"
 
-    def test_get_issue_message_no_reference_in_description(self, mock_config):
-        """Test issue message mapping for missing description reference."""
-        result = CheckResult(
-            name="issue",
-            passed=False,
-            reason=(
-                "No linked issue and no valid closing issue reference in PR description"
-            ),
+    def test_should_close_pr_for_commit_signature(self, mock_config):
+        """Test closure applies to unsigned commits when configured."""
+        mock_config.close_on = frozenset({"commit_signature"})
+        validation_result = make_validation_result(
+            CheckResult(
+                name="commit_signature",
+                passed=False,
+                reason=UNSIGNED_COMMITS_REASON,
+                details=["abc123"],
+            )
         )
         pr_manager = PrManager(mock_config)
 
-        assert pr_manager.get_issue_message(result) == mock_config.no_issue_message
+        assert pr_manager.should_close_pr(validation_result) is True
 
-    def test_get_issue_message_unknown_reason(self, mock_config):
-        """Test issue message fallback for unmapped failure reasons."""
-        result = CheckResult(
-            name="issue",
-            passed=False,
-            reason="Unexpected issue validation error",
+    def test_should_not_close_for_unconfigured_issue_failures(self, mock_config):
+        """Test issue reference failures do not close when only assignee is configured."""
+        mock_config.close_on = frozenset({"issue_assignee"})
+        validation_result = make_validation_result(
+            CheckResult(
+                name="issue_reference",
+                passed=False,
+                reason=NO_CORRESPONDING_ISSUE_REASON,
+            )
         )
         pr_manager = PrManager(mock_config)
 
-        assert (
-            pr_manager.get_issue_message(result) == "Unexpected issue validation error"
-        )
+        assert pr_manager.should_close_pr(validation_result) is False

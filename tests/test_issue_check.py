@@ -1,11 +1,21 @@
 """Tests for issue contribution check."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
 from check_contribution_action.checks.base import CheckContext
-from check_contribution_action.checks.issue import IssueCheck, IssueLookupResult
+from check_contribution_action.checks.issue import (
+    IssueCheck,
+    IssueLookupResult,
+)
+from check_contribution_action.failure_reasons import (
+    ASSIGNEE_MISMATCH_REASON,
+    GITHUB_CLOSING_LINK_ERROR,
+    ISSUE_HAS_NO_ASSIGNEE_REASON,
+    NO_CORRESPONDING_ISSUE_REASON,
+    NO_ISSUE_FOR_ASSIGNEE_REASON,
+)
 from check_contribution_action.models import CheckResult
 
 
@@ -25,13 +35,17 @@ class TestIssueCheck:
 
     def test_is_enabled(self, issue_check, mock_config):
         """Test enabled flag follows issue-related config."""
-        mock_config.check_issue_linking = False
         mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = []
+        mock_config.check_target_branch = False
         assert issue_check.is_enabled(mock_config) is False
 
-        mock_config.check_issue_linking = True
+        mock_config.check_issue_reference = True
+        assert issue_check.is_enabled(mock_config) is True
+
+        mock_config.check_issue_reference = False
+        mock_config.check_target_branch = True
         assert issue_check.is_enabled(mock_config) is True
 
     def test_run_missing_context(self, issue_check, mock_config):
@@ -41,7 +55,7 @@ class TestIssueCheck:
         result = issue_check.run(context)
 
         assert result == CheckResult(
-            name="issue",
+            name="issue_reference",
             passed=False,
             reason="Missing pull request context",
         )
@@ -63,11 +77,11 @@ class TestIssueCheck:
     ):
         """Test that bot PRs are validated when validate_bot_authors is enabled."""
         mock_config.validate_bot_authors = True
-        mock_config.check_issue_linking = True
-        mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.check_issue_reference = True
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = []
         mock_bot_pr.base.repo.full_name = "testowner/testrepo"
+        mock_bot_pr.body = "Bot PR without issue reference"
         mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
             {},
             {
@@ -84,7 +98,7 @@ class TestIssueCheck:
         )
 
         assert result.passed is False
-        assert result.reason == "No linked issue"
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
     def test_validate_skip_user_pr(
         self, issue_check, mock_config, mock_github_client, mock_pr
@@ -152,7 +166,7 @@ class TestIssueCheck:
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert result.reason == "No linked issue"
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
     def test_validate_pr_no_linked_issue_with_description_reference_enabled_and_valid(
         self,
@@ -162,10 +176,9 @@ class TestIssueCheck:
         mock_pr,
         mock_issue,
     ):
-        """Valid description reference should pass when linking is disabled."""
-        mock_config.check_issue_linking = False
+        """Valid description reference should pass when GitHub linking is unavailable."""
         mock_config.check_issue_reference = True
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_pr.body = "This PR fixes #123"
 
         def graphql_side_effect(*args, **kwargs):
@@ -204,36 +217,48 @@ class TestIssueCheck:
     def test_validate_pr_no_linked_issue_with_description_reference_enabled_and_invalid(
         self, issue_check, mock_config, mock_github_client, mock_pr
     ):
-        """Invalid description reference should fail when reference check is enabled."""
-        mock_config.check_issue_linking = False
+        """Invalid description reference should fail."""
         mock_config.check_issue_reference = True
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_pr.body = "This PR references issue #123 but without closing keyword"
+        mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
+            {},
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {"closingIssuesReferences": {"edges": []}}
+                    }
+                }
+            },
+        )
 
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert (
-            result.reason
-            == "No linked issue and no valid closing issue reference in PR description"
-        )
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
     def test_validate_pr_no_linked_issue_with_invalid_reference_format(
         self, issue_check, mock_config, mock_github_client, mock_pr
     ):
         """Invalid reference format in description should be rejected."""
-        mock_config.check_issue_linking = False
         mock_config.check_issue_reference = True
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_pr.body = "Resolves some-org/some-repo#42"
+        mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
+            {},
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {"closingIssuesReferences": {"edges": []}}
+                    }
+                }
+            },
+        )
 
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert (
-            result.reason
-            == "No linked issue and no valid closing issue reference in PR description"
-        )
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
     def test_validate_pr_description_reference_with_assignee_check(
         self,
@@ -244,9 +269,8 @@ class TestIssueCheck:
         mock_issue_with_assignee,
     ):
         """Description reference with assignee requirement should validate assignee."""
-        mock_config.check_issue_linking = False
-        mock_config.check_issue_reference = True
-        mock_config.require_assignee = True
+        mock_config.check_issue_reference = False
+        mock_config.check_issue_assignee = True
         mock_pr.body = "This PR fixes #456"
 
         def graphql_side_effect(*args, **kwargs):
@@ -293,9 +317,8 @@ class TestIssueCheck:
         mock_issue_with_different_assignee,
     ):
         """Description reference with assignee mismatch should fail."""
-        mock_config.check_issue_linking = False
-        mock_config.check_issue_reference = True
-        mock_config.require_assignee = True
+        mock_config.check_issue_reference = False
+        mock_config.check_issue_assignee = True
         mock_pr.body = "This PR fixes #456"
 
         def graphql_side_effect(*args, **kwargs):
@@ -331,7 +354,7 @@ class TestIssueCheck:
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert result.reason == "Assignee mismatch"
+        assert result.reason == ASSIGNEE_MISMATCH_REASON
 
     def test_validate_pr_issue_linking_error(
         self, issue_check, mock_config, mock_github_client, mock_pr
@@ -345,7 +368,7 @@ class TestIssueCheck:
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert result.reason == "Error checking issue linking"
+        assert result.reason == GITHUB_CLOSING_LINK_ERROR
 
     def test_validate_pr_assignee_mismatch(
         self,
@@ -383,7 +406,7 @@ class TestIssueCheck:
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert result.reason == "Assignee mismatch"
+        assert result.reason == ASSIGNEE_MISMATCH_REASON
 
     def test_validate_pr_no_assignee(
         self, issue_check, mock_config, mock_github_client, mock_pr, mock_issue
@@ -416,7 +439,7 @@ class TestIssueCheck:
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert result.reason == "Issue has no assignee"
+        assert result.reason == ISSUE_HAS_NO_ASSIGNEE_REASON
 
     def test_validate_pr_assignee_not_required(
         self, issue_check, mock_github_client, mock_pr, mock_issue
@@ -424,9 +447,8 @@ class TestIssueCheck:
         """Test validation when assignee requirement is disabled."""
         mock_config = Mock()
         mock_config.skip_users = []
-        mock_config.check_issue_linking = True
-        mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.check_issue_reference = True
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = []
         mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
             {},
@@ -468,7 +490,7 @@ class TestIssueCheck:
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert result.reason == "Error checking issue linking"
+        assert result.reason == GITHUB_CLOSING_LINK_ERROR
 
     def test_validate_target_branch_no_restrictions(
         self, issue_check, mock_config, mock_pr
@@ -526,6 +548,7 @@ class TestIssueCheck:
     ):
         """Test full PR validation with allowed target branch."""
         mock_config.target_branches = ["main", "develop"]
+        mock_config.check_target_branch = True
         mock_pr.base.ref = "main"
         mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
             {},
@@ -561,6 +584,7 @@ class TestIssueCheck:
     ):
         """Test full PR validation when target branch is not allowed."""
         mock_config.target_branches = ["main", "develop"]
+        mock_config.check_target_branch = True
         mock_pr.base.ref = "feature-branch"
 
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
@@ -572,10 +596,10 @@ class TestIssueCheck:
         self, issue_check, mock_config, mock_github_client, mock_pr
     ):
         """Test branch-only validation when no issue checks are enabled."""
-        mock_config.check_issue_linking = False
         mock_config.check_issue_reference = False
-        mock_config.require_assignee = False
+        mock_config.check_issue_assignee = False
         mock_config.target_branches = ["main"]
+        mock_config.check_target_branch = True
         mock_pr.base.ref = "main"
 
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
@@ -583,13 +607,15 @@ class TestIssueCheck:
         assert result.passed is True
         assert result.reason == "Branch validation passed"
 
-    def test_validate_issue_reference_empty_description(self, issue_check, mock_pr):
-        """Test reference validation with an empty PR description."""
+    def test_parse_closing_reference_in_description_empty_description(
+        self, issue_check, mock_pr
+    ):
+        """Test reference parsing with an empty PR description."""
         mock_pr.body = "   "
-        result = issue_check.validate_issue_reference(mock_pr)
+        result = issue_check.parse_closing_reference_in_description(mock_pr)
 
         assert result.passed is False
-        assert "no valid closing issue reference" in result.reason
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
     def test_validate_target_branch_default_branch_lookup_error(
         self, issue_check, mock_config, mock_pr
@@ -628,12 +654,9 @@ class TestIssueCheck:
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
         assert result.passed is False
-        assert (
-            result.reason
-            == "No linked issue and no valid closing issue reference in PR description"
-        )
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
-    def test_validate_issue_linking_repo_error(
+    def test_validate_github_closing_link_repo_error(
         self, issue_check, mock_github_client, mock_pr
     ):
         """Test issue linking when fetching the linked issue fails."""
@@ -653,10 +676,10 @@ class TestIssueCheck:
             },
         )
 
-        result = issue_check.validate_issue_linking(mock_pr, mock_github_client)
+        result = issue_check.validate_github_closing_link(mock_pr, mock_github_client)
 
         assert result.passed is False
-        assert result.reason == "Error checking issue linking"
+        assert result.reason == GITHUB_CLOSING_LINK_ERROR
 
     def test_get_issue_by_number_graphql_errors(
         self, issue_check, mock_github_client, mock_pr
@@ -701,39 +724,63 @@ class TestIssueCheck:
         result = issue_check.validate_assignee(mock_pr, None)
 
         assert result.passed is False
-        assert result.reason == "No issue to check assignee"
+        assert result.reason == NO_ISSUE_FOR_ASSIGNEE_REASON
 
-    def test_run_returns_deferred_linking_error_after_reference_lookup_fails(
-        self, issue_check, mock_config, mock_github_client, mock_pr
+    def test_resolve_corresponding_issue_returns_linking_error_without_fallback(
+        self, issue_check, mock_github_client, mock_pr
     ):
-        """Test deferred linking errors are returned after reference lookup fails."""
-        mock_config.check_issue_linking = True
-        mock_config.check_issue_reference = True
-        mock_config.require_assignee = False
-        linking_result = IssueLookupResult(passed=False, reason="", issue=None)
+        """Test GraphQL linking errors are returned without reference fallback."""
+        mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
+            {},
+            {"errors": [{"message": "GraphQL API Error"}]},
+        )
 
-        with (
-            patch.object(
-                issue_check,
-                "validate_issue_linking",
-                return_value=linking_result,
-            ),
-            patch.object(
-                issue_check,
-                "validate_issue_reference",
-                return_value=IssueLookupResult(
-                    passed=False,
-                    reason="No valid reference",
-                    issue_number=None,
-                ),
-            ),
-        ):
-            result = issue_check.run(
-                make_context(mock_config, mock_github_client, mock_pr)
-            )
+        result = issue_check.resolve_corresponding_issue(mock_pr, mock_github_client)
 
         assert result.passed is False
-        assert result.reason == ""
+        assert result.reason == GITHUB_CLOSING_LINK_ERROR
+
+    def test_assignee_only_without_issue_uses_assignee_failure(
+        self, issue_check, mock_config, mock_github_client, mock_pr
+    ):
+        """Test assignee-only config maps missing issue to assignee error."""
+        mock_config.check_issue_reference = False
+        mock_config.check_issue_assignee = True
+        mock_pr.body = "No valid reference here"
+        mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
+            {},
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {"closingIssuesReferences": {"edges": []}}
+                    }
+                }
+            },
+        )
+
+        result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
+
+        assert result.passed is False
+        assert result.name == "issue_assignee"
+        assert result.reason == NO_ISSUE_FOR_ASSIGNEE_REASON
+
+    def test_assignee_only_graphql_error_uses_assignee_failure(
+        self, issue_check, mock_config, mock_github_client, mock_pr
+    ):
+        """Test assignee-only config maps GraphQL errors to assignee failure."""
+        mock_config.check_issue_reference = False
+        mock_config.check_issue_assignee = True
+        mock_pr.body = "This PR fixes #456"
+        mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
+            {},
+            {"errors": [{"message": "GraphQL API Error"}]},
+        )
+
+        result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
+
+        assert result.passed is False
+        assert result.name == "issue_assignee"
+        assert result.reason == NO_ISSUE_FOR_ASSIGNEE_REASON
 
 
 class TestIssueLookupResult:

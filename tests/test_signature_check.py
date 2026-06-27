@@ -8,6 +8,7 @@ import pytest
 from check_contribution_action.checks.base import CheckContext
 from check_contribution_action.checks.signature import SignatureCheck
 from check_contribution_action.commits import parse_raw_commit_object
+from check_contribution_action.failure_reasons import UNSIGNED_COMMITS_REASON
 from check_contribution_action.models import CheckResult, CommitInfo
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "commits"
@@ -81,7 +82,7 @@ class TestSignatureCheck:
         assert result == CheckResult(
             name="commit_signature",
             passed=False,
-            reason="Unsigned commits",
+            reason=UNSIGNED_COMMITS_REASON,
             details=["unsigned456"],
         )
 

@@ -15,28 +15,28 @@ trap cleanup_case_artifacts EXIT
 setup_run
 
 case "${CASE_ID}" in
-  issue-linking-pass)
-    create_issue "issue-linking-pass"
-    create_branch_with_commit "${BRANCH_PREFIX}/head" "issue linking pass"
+  issue-linked-pass)
+    create_issue "issue-linked-pass"
+    create_branch_with_commit "${BRANCH_PREFIX}/head" "issue linked pass"
     create_pull_request \
-      "issue-linking-pass" \
+      "issue-linked-pass" \
       "Closes #${ISSUE_NUMBER}" \
       "main" \
       "${BRANCH_PREFIX}/head"
     wait_for_closing_issue_link
     build_event_payload
-    run_action 0 check_issue_linking=true
+    run_action 0 check_for=issue_reference
     ;;
 
-  issue-linking-fail)
-    create_branch_with_commit "${BRANCH_PREFIX}/head" "issue linking fail"
+  issue-linked-fail)
+    create_branch_with_commit "${BRANCH_PREFIX}/head" "issue linked fail"
     create_pull_request \
-      "issue-linking-fail" \
+      "issue-linked-fail" \
       "No linked issue for this integration test." \
       "main" \
       "${BRANCH_PREFIX}/head"
     build_event_payload
-    run_action 1 check_issue_linking=true
+    run_action 1 check_for=issue_reference
     ;;
 
   issue-reference-pass)
@@ -48,7 +48,7 @@ case "${CASE_ID}" in
       "main" \
       "${BRANCH_PREFIX}/head"
     build_event_payload
-    run_action 0 check_issue_reference=true
+    run_action 0 check_for=issue_reference
     ;;
 
   issue-reference-fail)
@@ -60,56 +60,56 @@ case "${CASE_ID}" in
       "main" \
       "${BRANCH_PREFIX}/head"
     build_event_payload
-    run_action 1 check_issue_reference=true
+    run_action 1 check_for=issue_reference
     ;;
 
-  assignee-fail)
-    create_issue "assignee-fail"
-    create_branch_with_commit "${BRANCH_PREFIX}/head" "assignee fail"
+  issue-assignee-fail)
+    create_issue "issue-assignee-fail"
+    create_branch_with_commit "${BRANCH_PREFIX}/head" "issue assignee fail"
     create_pull_request \
-      "assignee-fail" \
+      "issue-assignee-fail" \
       "Closes #${ISSUE_NUMBER}" \
       "main" \
       "${BRANCH_PREFIX}/head"
     wait_for_closing_issue_link
     build_event_payload
-    run_action 1 check_issue_linking=true require_assignee=true
+    run_action 1 check_for=issue_assignee,issue_reference
     ;;
 
-  sign-off-pass)
+  commit-sign-off-pass)
     create_branch_with_commit "${BRANCH_PREFIX}/head" \
-      "sign-off pass
+      "commit sign-off pass
 
 $(sign_off_trailer)"
     create_pull_request \
-      "sign-off-pass" \
+      "commit-sign-off-pass" \
       "Integration test for sign-off pass." \
       "main" \
       "${BRANCH_PREFIX}/head"
     build_event_payload
-    run_action 0 check_sign_off=true
+    run_action 0 check_for=commit_sign_off
     ;;
 
-  sign-off-fail)
-    create_branch_with_commit "${BRANCH_PREFIX}/head" "sign-off fail without trailer"
+  commit-sign-off-fail)
+    create_branch_with_commit "${BRANCH_PREFIX}/head" "commit sign-off fail without trailer"
     create_pull_request \
-      "sign-off-fail" \
+      "commit-sign-off-fail" \
       "Integration test for sign-off fail." \
       "main" \
       "${BRANCH_PREFIX}/head"
     build_event_payload
-    run_action 1 check_sign_off=true
+    run_action 1 check_for=commit_sign_off
     ;;
 
-  signature-fail)
+  commit-signature-fail)
     create_branch_with_commit "${BRANCH_PREFIX}/head" "unsigned commit"
     create_pull_request \
-      "signature-fail" \
+      "commit-signature-fail" \
       "Integration test for unsigned commit." \
       "main" \
       "${BRANCH_PREFIX}/head"
     build_event_payload
-    run_action 1 check_commit_signature=true
+    run_action 1 check_for=commit_signature
     ;;
 
   target-branch-pass)
@@ -120,7 +120,7 @@ $(sign_off_trailer)"
       "main" \
       "${BRANCH_PREFIX}/head"
     build_event_payload
-    run_action 0 target_branches=$'release\n'
+    run_action 0 check_for=target_branch target_branches=$'release\n'
     ;;
 
   target-branch-fail)
@@ -143,7 +143,7 @@ $(sign_off_trailer)"
       "${restricted_base}" \
       "${feature_branch}"
     build_event_payload
-    run_action 1 target_branches=$'release\n'
+    run_action 1 check_for=target_branch target_branches=$'release\n'
     ;;
 
   *)

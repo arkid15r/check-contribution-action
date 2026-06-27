@@ -8,6 +8,10 @@ import pytest
 from check_contribution_action.checks.base import CheckContext
 from check_contribution_action.checks.sign_off import SignOffCheck
 from check_contribution_action.commits import parse_raw_commit_object
+from check_contribution_action.failure_reasons import (
+    MISSING_SIGN_OFF_REASON,
+    SIGN_OFF_MISMATCH_REASON,
+)
 from check_contribution_action.models import CheckResult, CommitInfo
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "commits"
@@ -28,7 +32,7 @@ def load_commit(name: str, sha: str = "abc123") -> CommitInfo:
 def make_config(*, strict_match: bool = False) -> Mock:
     """Return a config with sign-off checking enabled."""
     config = Mock()
-    config.check_sign_off = True
+    config.check_commit_sign_off = True
     config.sign_off_strict_match = strict_match
     return config
 
@@ -38,14 +42,14 @@ class TestSignOffCheck:
 
     def test_name(self, sign_off_check):
         """Test check name."""
-        assert sign_off_check.name == "sign_off"
+        assert sign_off_check.name == "commit_sign_off"
 
     def test_is_enabled(self, sign_off_check):
         """Test enabled flag follows config."""
         assert sign_off_check.is_enabled(make_config()) is True
 
         disabled_config = Mock()
-        disabled_config.check_sign_off = False
+        disabled_config.check_commit_sign_off = False
         assert sign_off_check.is_enabled(disabled_config) is False
 
     def test_passes_when_no_commits(self, sign_off_check):
@@ -54,7 +58,7 @@ class TestSignOffCheck:
 
         result = sign_off_check.run(context)
 
-        assert result == CheckResult(name="sign_off", passed=True)
+        assert result == CheckResult(name="commit_sign_off", passed=True)
 
     def test_passes_with_sign_off_present(self, sign_off_check):
         """Test commits with Signed-off-by pass in presence-only mode."""
@@ -63,7 +67,7 @@ class TestSignOffCheck:
 
         result = sign_off_check.run(context)
 
-        assert result == CheckResult(name="sign_off", passed=True)
+        assert result == CheckResult(name="commit_sign_off", passed=True)
 
     def test_passes_with_case_insensitive_sign_off(self, sign_off_check):
         """Test case-insensitive Signed-off-by trailers pass."""
@@ -72,7 +76,7 @@ class TestSignOffCheck:
 
         result = sign_off_check.run(context)
 
-        assert result == CheckResult(name="sign_off", passed=True)
+        assert result == CheckResult(name="commit_sign_off", passed=True)
 
     def test_fails_when_sign_off_missing(self, sign_off_check):
         """Test commits without sign-off fail."""
@@ -82,9 +86,9 @@ class TestSignOffCheck:
         result = sign_off_check.run(context)
 
         assert result == CheckResult(
-            name="sign_off",
+            name="commit_sign_off",
             passed=False,
-            reason="Missing sign-off",
+            reason=MISSING_SIGN_OFF_REASON,
             details=["missing123"],
         )
 
@@ -95,7 +99,7 @@ class TestSignOffCheck:
 
         result = sign_off_check.run(context)
 
-        assert result == CheckResult(name="sign_off", passed=True)
+        assert result == CheckResult(name="commit_sign_off", passed=True)
 
     def test_strict_match_fails_when_sign_off_differs(self, sign_off_check):
         """Test strict mode fails when sign-off does not match author."""
@@ -112,9 +116,9 @@ class TestSignOffCheck:
         result = sign_off_check.run(context)
 
         assert result == CheckResult(
-            name="sign_off",
+            name="commit_sign_off",
             passed=False,
-            reason="Sign-off mismatch",
+            reason=SIGN_OFF_MISMATCH_REASON,
             details=["mismatch123"],
         )
 
@@ -132,7 +136,7 @@ class TestSignOffCheck:
 
         result = sign_off_check.run(context)
 
-        assert result == CheckResult(name="sign_off", passed=True)
+        assert result == CheckResult(name="commit_sign_off", passed=True)
 
     def test_missing_sign_off_checked_before_strict_match(self, sign_off_check):
         """Test missing sign-off is reported before strict mismatch."""
@@ -151,5 +155,5 @@ class TestSignOffCheck:
 
         result = sign_off_check.run(context)
 
-        assert result.reason == "Missing sign-off"
+        assert result.reason == MISSING_SIGN_OFF_REASON
         assert result.details == ["missing123"]

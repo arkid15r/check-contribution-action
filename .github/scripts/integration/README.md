@@ -14,30 +14,36 @@ Scripts create real issues, branches, and pull requests in the repository, run t
   export GITHUB_RUN_ID=local
   export GITHUB_WORKSPACE="$PWD"
   export GITHUB_REPOSITORY=owner/repo
-  bash .github/scripts/integration/run_case.sh issue-linking-pass
+  bash .github/scripts/integration/run_case.sh issue-linked-pass
   ```
 
 Integration cases pass `validate_bot_authors=true` so PRs created by `github-actions[bot]` are validated.
 
 ## Cases
 
-| Case | Checks enabled | Expected result |
-|------|----------------|-----------------|
-| `issue-linking-pass` | `check_issue_linking` | pass |
-| `issue-linking-fail` | `check_issue_linking` | fail |
-| `issue-reference-pass` | `check_issue_reference` | pass |
-| `issue-reference-fail` | `check_issue_reference` | fail |
-| `assignee-fail` | `check_issue_linking`, `require_assignee` | fail (linked issue, no assignee) |
-| `sign-off-pass` | `check_sign_off` | pass |
-| `sign-off-fail` | `check_sign_off` | fail |
-| `signature-fail` | `check_commit_signature` | fail |
-| `target-branch-pass` | `target_branches` | pass |
-| `target-branch-fail` | `target_branches` | fail |
+Case IDs mirror `check_for` / `close_on` names (`_` → `-`) with a `-pass` or `-fail` suffix.
 
-## Omitted: `assignee-pass`
+| Case | `check_for` | Expected result |
+|------|-------------|-----------------|
+| `commit-sign-off-fail` | `commit_sign_off` | fail |
+| `commit-sign-off-pass` | `commit_sign_off` | pass |
+| `commit-signature-fail` | `commit_signature` | fail |
+| `issue-assignee-fail` | `issue_assignee, issue_reference` | fail (linked issue, no assignee) |
+| `issue-linked-fail` | `issue_reference` (no linked issue or reference) | fail |
+| `issue-linked-pass` | `issue_reference` (GitHub closing link) | pass |
+| `issue-reference-fail` | `issue_reference` (invalid description reference) | fail |
+| `issue-reference-pass` | `issue_reference` (PR description reference only) | pass |
+| `target-branch-fail` | `target_branch` (+ `target_branches`) | fail |
+| `target-branch-pass` | `target_branch` (+ `target_branches`) | pass |
 
-There is no `assignee-pass` integration case.
+## Omitted: `issue-assignee-pass`
+
+There is no `issue-assignee-pass` integration case.
 
 Integration PRs are authored by `github-actions[bot]`. The assignee check requires the linked issue assignee to match the PR author. GitHub does not allow assigning bot accounts such as `github-actions[bot]` to issues, so a passing assignee scenario cannot be set up with the default Actions token.
 
-`assignee-fail` still covers the failure path (linked issue without a matching assignee). The success path is covered by unit tests in `tests/test_issue_check.py`.
+`issue-assignee-fail` still covers the failure path (linked issue without a matching assignee). The success path is covered by unit tests in `tests/test_issue_check.py`.
+
+## GraphQL link errors
+
+GitHub closing-link lookup failures (API errors) do not fall back to PR description parsing. That behavior is verified in unit tests (`test_resolve_corresponding_issue_returns_linking_error_without_fallback` and related cases), not via integration tests, because CI cannot force GraphQL errors against the live GitHub API.
