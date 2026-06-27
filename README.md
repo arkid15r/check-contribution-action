@@ -6,14 +6,14 @@ Configure which checks run via the required `check_for` input.
 
 Sign-off and signature checks load **PR commits from the GitHub API** (`pulls/{number}/commits`). No `actions/checkout` step is required unless you use `skip_users_file_path`.
 
-Fork PRs should be excluded in the workflow job `if` (see usage example below).
-
 ## Usage
+
+Use `pull_request_target` so fork contributions get a token that can comment and close PRs. Skip PRs whose base is not this repository (PRs opened entirely inside a fork).
 
 ```yaml
 name: Check Contribution
 on:
-  pull_request:
+  pull_request_target:
     types:
       - edited
       - opened
@@ -22,7 +22,7 @@ on:
 
 jobs:
   check-contribution:
-    if: github.event.pull_request.head.repo.fork == false
+    if: github.event.pull_request.base.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,6 +35,8 @@ jobs:
           close_on: issue_assignee
           github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+Do not check out the PR head ref or run code from the PR branch in this job. This action only reads PR data via the GitHub API.
 
 `check_for` is **required**. Set it to the contribution checks you want to run. Supported values:
 
