@@ -65,6 +65,9 @@ jobs:
         run: |
           grep -Eq "check-contribution-action/check-contribution-action:${GITHUB_REF_NAME}\$" action.yml
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
@@ -95,8 +98,14 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/check-contribution-action:cache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/check-contribution-action:cache,mode=max
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.list }}
+
+      - name: Verify multi-arch manifest
+        run: |
+          docker buildx imagetools inspect \
+            "ghcr.io/${{ github.repository }}/check-contribution-action:${GITHUB_REF_NAME}"
 
       - name: Create GitHub Release
         env:
