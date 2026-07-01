@@ -103,7 +103,7 @@ Each git tag pins a matching immutable Docker image tag in `action.yml`. Consume
    git push origin v0.1.3
    ```
 
-The [Release workflow](.github/workflows/release.yml) runs tests, verifies `action.yml` matches the git tag, publishes the Docker image as `v0.1.3` (and a moving `v0` major alias on GHCR), and creates a GitHub Release.
+The [Release workflow](.github/workflows/release.yml) runs tests, verifies `action.yml` matches the git tag, publishes multi-arch Docker images (`linux/amd64`, `linux/arm64`) as `v0.1.3` (and a moving `v0` major alias on GHCR), and creates a GitHub Release.
 
 Pin `@v0.1.3` for an immutable release. Use a moving git tag such as `@v0` only if you retag it on each minor release and update `action.yml` to point at the latest `v0.x.x` image.
 
