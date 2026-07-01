@@ -52,21 +52,27 @@ jobs:
       - name: Test with pytest
         run: poetry run pytest --cov=src --cov-fail-under=90
 
-  publish:
-    name: Publish Docker image
-    runs-on: ubuntu-latest
+  build-image:
+    name: Build ${{ matrix.platform }}
     needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Verify action.yml references this release's Docker tag
+        if: matrix.platform == 'linux/amd64'
         run: |
           grep -Eq "check-contribution-action/check-contribution-action:${GITHUB_REF_NAME}\$" action.yml
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -78,29 +84,68 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve Docker tags
-        id: tags
-        run: |
-          image="ghcr.io/${{ github.repository }}/check-contribution-action"
-          version="${GITHUB_REF_NAME}"
-          major="${version%%.*}"
-          {
-            echo "list<<EOF"
-            echo "${image}:${version}"
-            echo "${image}:${major}"
-            echo "${image}:${{ github.sha }}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Build and push Docker image
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/check-contribution-action:cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/check-contribution-action:cache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/check-contribution-action:cache-${{ matrix.platform }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/check-contribution-action:cache-${{ matrix.platform }},mode=max
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.list }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,push-by-digest=true,name-canonical=true
+
+      - name: Export digest
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: digests-${{ matrix.platform }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish Docker image
+    runs-on: ubuntu-latest
+    needs: build-image
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/check-contribution-action
+        run: |
+          version="${GITHUB_REF_NAME}"
+          major="${version%%.*}"
+          refs=()
+          for file in "${{ runner.temp }}/digests"/*; do
+            refs+=("${IMAGE}@sha256:$(basename "${file}")")
+          done
+          docker buildx imagetools create \
+            -t "${IMAGE}:${version}" \
+            -t "${IMAGE}:${major}" \
+            -t "${IMAGE}:${{ github.sha }}" \
+            "${refs[@]}"
 
       - name: Verify multi-arch manifest
         run: |
