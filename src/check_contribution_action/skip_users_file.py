@@ -141,7 +141,7 @@ def load_skip_users_from_file_path(
             location.path,
         )
         return []
-    except (OSError, ValueError):
+    except OSError, ValueError:
         logger.exception(
             "Failed to read skip users file from %s/%s",
             location.full_name,
