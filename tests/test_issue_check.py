@@ -1,6 +1,6 @@
 """Tests for issue contribution check."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -8,6 +8,7 @@ from check_contribution_action.checks.base import CheckContext
 from check_contribution_action.checks.issue import (
     IssueCheck,
     IssueLookupResult,
+    success_check_name,
 )
 from check_contribution_action.failure_reasons import (
     ASSIGNEE_MISMATCH_REASON,
@@ -32,6 +33,17 @@ def issue_check() -> IssueCheck:
 
 class TestIssueCheck:
     """Test cases for IssueCheck."""
+
+    def test_name_property(self, issue_check):
+        """Test the check identifier used for logging."""
+        assert issue_check.name == "issue"
+
+    def test_success_check_name_target_branch_only(self, mock_config):
+        """Test success naming when only target branch validation is enabled."""
+        mock_config.check_issue_reference = False
+        mock_config.check_issue_assignee = False
+
+        assert success_check_name(mock_config) == "target_branch"
 
     def test_is_enabled(self, issue_check, mock_config):
         """Test enabled flag follows issue-related config."""
@@ -739,6 +751,58 @@ class TestIssueCheck:
 
         assert result.passed is False
         assert result.reason == GITHUB_CLOSING_LINK_ERROR
+
+    def test_resolve_corresponding_issue_referenced_issue_not_found(
+        self, issue_check, mock_github_client, mock_pr
+    ):
+        """Test description references fail when the issue cannot be loaded."""
+        mock_pr.body = "This PR fixes #123"
+
+        def graphql_side_effect(*args, **kwargs):
+            input_data = kwargs.get("input", {})
+            query = input_data.get("query", "")
+            variables = input_data.get("variables", {})
+
+            if "GetIssue" in query and variables.get("issueNumber") == 123:
+                return ({}, {"data": {"repository": {"issue": None}}})
+            return (
+                {},
+                {
+                    "data": {
+                        "repository": {
+                            "pullRequest": {"closingIssuesReferences": {"edges": []}}
+                        }
+                    }
+                },
+            )
+
+        mock_github_client._Github__requester.requestJsonAndCheck.side_effect = (
+            graphql_side_effect
+        )
+
+        result = issue_check.resolve_corresponding_issue(mock_pr, mock_github_client)
+
+        assert result.passed is False
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
+
+    def test_run_lookup_passed_without_issue(
+        self, issue_check, mock_config, mock_github_client, mock_pr
+    ):
+        """Test defensive handling when lookup reports success without an issue."""
+        mock_config.check_issue_reference = True
+        mock_config.check_issue_assignee = False
+
+        with patch.object(
+            issue_check,
+            "resolve_corresponding_issue",
+            return_value=IssueLookupResult(passed=True, issue=None),
+        ):
+            result = issue_check.run(
+                make_context(mock_config, mock_github_client, mock_pr)
+            )
+
+        assert result.passed is False
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
     def test_assignee_only_without_issue_uses_assignee_failure(
         self, issue_check, mock_config, mock_github_client, mock_pr

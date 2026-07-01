@@ -59,6 +59,11 @@ class TestParseSkipUsersFileLocation:
         with pytest.raises(ValueError, match="must not be empty"):
             parse_skip_users_file_location("  ", REPOSITORY)
 
+    def test_invalid_repository_name_raises(self):
+        """Test repository names without an owner/repo separator are rejected."""
+        with pytest.raises(ValueError, match="Invalid repository name"):
+            parse_skip_users_file_location(".github/skip_users.txt", "invalid")
+
 
 class TestLoadSkipUsersFromFilePath:
     """Tests for loading skip users from local or GitHub paths."""
@@ -75,6 +80,26 @@ class TestLoadSkipUsersFromFilePath:
         )
 
         assert users == ["user1", "user2"]
+
+    def test_local_file_not_found_returns_empty(self, tmp_path):
+        """Test missing local skip files return an empty list."""
+        users = load_skip_users_from_file_path(
+            str(tmp_path / "missing.txt"),
+            github_token="token",
+            repository_full_name=REPOSITORY,
+        )
+
+        assert users == []
+
+    def test_local_file_read_error_returns_empty(self, tmp_path):
+        """Test local read failures return an empty list."""
+        users = load_skip_users_from_file_path(
+            str(tmp_path),
+            github_token="token",
+            repository_full_name=REPOSITORY,
+        )
+
+        assert users == []
 
     def test_github_relative_path(self):
         """Test repository-relative paths use the GitHub API."""
@@ -120,6 +145,34 @@ class TestLoadSkipUsersFromFilePath:
 
         assert users == []
 
+    def test_github_fetch_value_error_returns_empty(self):
+        """Test fetch validation errors return an empty list."""
+        with patch(
+            "check_contribution_action.skip_users_file.fetch_skip_users_from_github",
+            side_effect=ValueError("must point to a file"),
+        ):
+            users = load_skip_users_from_file_path(
+                ".github",
+                github_token="token",
+                repository_full_name=REPOSITORY,
+            )
+
+        assert users == []
+
+    def test_github_fetch_os_error_returns_empty(self):
+        """Test fetch I/O errors return an empty list."""
+        with patch(
+            "check_contribution_action.skip_users_file.fetch_skip_users_from_github",
+            side_effect=OSError("network down"),
+        ):
+            users = load_skip_users_from_file_path(
+                ".github/skip_users.txt",
+                github_token="token",
+                repository_full_name=REPOSITORY,
+            )
+
+        assert users == []
+
 
 class TestFetchSkipUsersFromGithub:
     """Tests for GitHub contents API fetch."""
@@ -150,6 +203,29 @@ class TestFetchSkipUsersFromGithub:
         repository.get_contents.assert_called_once_with(
             ".github/skip_users.txt", ref="main"
         )
+
+    def test_fetch_without_ref(self):
+        """Test default-branch fetch omits ref (PyGithub rejects ref=None)."""
+        content_file = MagicMock()
+        content_file.decoded_content = b"bot1\n"
+
+        repository = MagicMock()
+        repository.get_contents.return_value = content_file
+
+        github = MagicMock()
+        github.get_repo.return_value = repository
+
+        with patch(
+            "check_contribution_action.skip_users_file.Github",
+            return_value=github,
+        ):
+            users = fetch_skip_users_from_github(
+                "token",
+                SkipUsersFileLocation("OWASP", "Nest", ".github/skip_users.txt"),
+            )
+
+        assert users == ["bot1"]
+        repository.get_contents.assert_called_once_with(".github/skip_users.txt")
 
     def test_rejects_directory_path(self):
         """Test directory paths raise a clear error."""

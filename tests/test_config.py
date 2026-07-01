@@ -112,6 +112,33 @@ class TestConfig:
             config = Config()
             assert config.check_for == frozenset({"issue_reference"})
 
+    def test_check_for_only_unknown_values_raises(self):
+        """Test check_for with no supported values is rejected."""
+        with patch.dict(
+            os.environ,
+            {
+                **BASE_ENV,
+                "INPUT_CHECK_FOR": "not_real,also_fake",
+            },
+        ):
+            with pytest.raises(
+                ValueError,
+                match="check_for must include at least one supported check",
+            ):
+                Config()
+
+    def test_validate_enabled_checks_requires_enabled_check(self):
+        """Test validate_enabled_checks rejects an empty enabled set."""
+        config = Config.__new__(Config)
+        config.check_for = frozenset()
+        config.check_target_branch = False
+
+        with pytest.raises(
+            ValueError,
+            match="check_for must include at least one supported check",
+        ):
+            config.validate_enabled_checks()
+
     def test_check_for_issue_reference(self):
         """Test issue_reference enables the corresponding check."""
         with patch.dict(

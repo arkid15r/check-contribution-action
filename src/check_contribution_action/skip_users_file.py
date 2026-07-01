@@ -85,7 +85,7 @@ def fetch_skip_users_from_github(
     """Fetch and parse skip users from a file in a GitHub repository."""
     github = Github(github_token)
     repository = github.get_repo(location.full_name)
-    content = repository.get_contents(location.path, ref=ref)
+    content = repository.get_contents(location.path, **({"ref": ref} if ref else {}))
     if isinstance(content, list):
         raise ValueError(
             f"skip_users_file_path must point to a file, not a directory: {location.path}"

@@ -78,6 +78,19 @@ class TestCommitInfoFromGithub:
         assert commit_is_verified(commit) is True
         assert commit_info_from_github(commit).signed is True
 
+    def test_unverified_when_raw_data_lacks_verification(self):
+        """Test commits without verification metadata are treated as unsigned."""
+        commit = Mock()
+        commit.sha = "abc123"
+        commit.commit.message = "Add feature"
+        commit.commit.author.name = "Jane Doe"
+        commit.commit.author.email = "jane@example.com"
+        del commit.commit.verification
+        commit.raw_data = {"commit": {"message": "Add feature"}}
+
+        assert commit_is_verified(commit) is False
+        assert commit_info_from_github(commit).signed is False
+
     def test_parses_sign_off_from_message(self):
         """Test sign-off trailers are parsed from the commit message."""
         commit = make_github_commit(
