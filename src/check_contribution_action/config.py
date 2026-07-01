@@ -2,9 +2,9 @@
 
 import logging
 import os
-from pathlib import Path
 
 from check_contribution_action.check_for import CHECK_FOR_NAMES, DEFAULT_ERROR_MESSAGES
+from check_contribution_action.skip_users_file import load_skip_users_from_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -102,41 +102,19 @@ class Config:
             for name in CHECK_FOR_NAMES
         }
 
-    def resolve_file_path(self, file_path: str) -> str:
-        """Resolve file path relative to GitHub workspace if needed."""
-        github_workspace = Path(os.getenv("GITHUB_WORKSPACE", "/github/workspace"))
-        file_path_obj = Path(file_path)
-
-        if file_path_obj.as_posix().startswith("/github/workspace"):
-            return file_path_obj.as_posix()
-
-        if file_path_obj.is_absolute():
-            return file_path_obj.as_posix()
-
-        return str((github_workspace / file_path_obj).resolve())
-
     def parse_skip_users(self) -> list[str]:
         """Parse skip users from both the skip_users input and skip_users_file_path."""
         users_str = self.get_input("skip_users", "")
         skip_users = [user.strip() for user in users_str.split(",") if user.strip()]
 
         if file_path := self.get_input("skip_users_file_path", ""):
-            resolved_path = self.resolve_file_path(file_path)
-            try:
-                logger.info("Reading skip users from file: %s", resolved_path)
-                with open(resolved_path, encoding="utf-8") as file:
-                    file_users = [
-                        line.strip() for line in file.readlines() if line.strip()
-                    ]
-                    skip_users.extend(file_users)
-            except FileNotFoundError:
-                logger.error(
-                    "Skip users file not found: %s (original path: %s)",
-                    resolved_path,
-                    file_path,
-                )
-            except OSError as e:
-                logger.error("Error reading skip users file: %s", e)
+            repository_full_name = os.getenv("GITHUB_REPOSITORY", "")
+            file_users = load_skip_users_from_file_path(
+                file_path,
+                github_token=self.github_token,
+                repository_full_name=repository_full_name,
+            )
+            skip_users.extend(file_users)
 
         unique_users = sorted(set(skip_users))
         logger.info("Skip users configured: %s", unique_users)

@@ -4,7 +4,7 @@ GitHub Action for validating contribution requirements: issue linkage, commit si
 
 Configure which checks run via the required `check_for` input.
 
-Sign-off and signature checks load **PR commits from the GitHub API** (`pulls/{number}/commits`). No `actions/checkout` step is required unless you use `skip_users_file_path`.
+Sign-off and signature checks load **PR commits from the GitHub API** (`pulls/{number}/commits`). No `actions/checkout` step is required.
 
 ## Usage
 
@@ -29,14 +29,27 @@ jobs:
       issues: read
       pull-requests: write
     steps:
-      - uses: arkid15r/check-contribution-action@v0.1.3
+      - uses: arkid15r/check-contribution-action@v0.1.4
         with:
           check_for: commit_sign_off, commit_signature, issue_assignee, issue_reference
           close_on: issue_assignee
+          skip_users_file_path: .github/skip_users.txt
           github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 Do not check out the PR head ref or run code from the PR branch in this job. This action only reads PR data via the GitHub API.
+
+`skip_users_file_path` is fetched at runtime from the repository. Supported formats:
+
+- `.github/skip_users.txt` — path relative to the workflow repository
+- `OWASP/Nest/.github/skip_users.txt` — full GitHub path (owner included)
+
+`.github/skip_users.txt` lists GitHub usernames to skip, one per line:
+
+```text
+dependabot[bot]
+renovate[bot]
+```
 
 `check_for` is **required**. Set it to the contribution checks you want to run. Supported values:
 

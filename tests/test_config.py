@@ -204,10 +204,15 @@ class TestConfig:
             os.environ,
             {
                 **BASE_ENV,
+                "GITHUB_REPOSITORY": "OWASP/Nest",
                 "INPUT_SKIP_USERS_FILE_PATH": "non_existent_file.txt",
             },
         ):
-            config = Config()
+            with patch(
+                "check_contribution_action.config.load_skip_users_from_file_path",
+                return_value=[],
+            ):
+                config = Config()
             assert config.skip_users == []
 
     def test_skip_users_empty_file(self, tmp_path):
@@ -225,13 +230,6 @@ class TestConfig:
             config = Config()
             assert config.skip_users == []
 
-    def test_resolve_file_path_preserves_github_workspace_path(self):
-        """Test skip users file paths under /github/workspace are kept as-is."""
-        with patch.dict(os.environ, BASE_ENV):
-            config = Config()
-            path = config.resolve_file_path("/github/workspace/config/skip_users.txt")
-            assert path == "/github/workspace/config/skip_users.txt"
-
     def test_skip_users_file_read_error(self, tmp_path):
         """Test handling of OS errors when reading skip users file."""
         skip_users_file = tmp_path / "skip_users.txt"
@@ -244,9 +242,35 @@ class TestConfig:
                 "INPUT_SKIP_USERS_FILE_PATH": str(skip_users_file),
             },
         ):
-            with patch("builtins.open", side_effect=OSError("Permission denied")):
+            with patch(
+                "check_contribution_action.skip_users_file.read_skip_users_from_local_file",
+                side_effect=OSError("Permission denied"),
+            ):
                 config = Config()
                 assert config.skip_users == []
+
+    def test_skip_users_file_path_uses_github_repository(self):
+        """Test repository-relative skip users paths use GITHUB_REPOSITORY."""
+        with patch.dict(
+            os.environ,
+            {
+                **BASE_ENV,
+                "GITHUB_REPOSITORY": "OWASP/Nest",
+                "INPUT_SKIP_USERS_FILE_PATH": ".github/skip_users.txt",
+            },
+        ):
+            with patch(
+                "check_contribution_action.config.load_skip_users_from_file_path",
+                return_value=["bot1"],
+            ) as load_mock:
+                config = Config()
+
+            assert config.skip_users == ["bot1"]
+            load_mock.assert_called_once_with(
+                ".github/skip_users.txt",
+                github_token="test_token",
+                repository_full_name="OWASP/Nest",
+            )
 
     def test_target_branches_parsing(self):
         """Test parsing of newline-separated target branches."""
