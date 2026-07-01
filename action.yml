@@ -71,4 +71,4 @@ inputs:
 
 runs:
   using: docker
-  image: docker://ghcr.io/arkid15r/check-contribution-action/check-contribution-action:v0.1.4
+  image: docker://ghcr.io/arkid15r/check-contribution-action/check-contribution-action:v0.1.5
