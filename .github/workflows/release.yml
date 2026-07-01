@@ -94,6 +94,7 @@ jobs:
           cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/check-contribution-action:cache-${{ matrix.cache_id }},mode=max
           context: .
           platforms: ${{ matrix.platform }}
+          tags: ghcr.io/${{ github.repository }}/check-contribution-action
           outputs: type=image,push-by-digest=true,name-canonical=true
 
       - name: Export digest
