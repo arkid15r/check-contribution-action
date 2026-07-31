@@ -48,6 +48,12 @@ inputs:
     description: Whether Signed-off-by must match the commit author identity
     required: false
     default: 'false'
+  skip_bot_authors:
+    description: >-
+      Whether to skip all contribution checks for PRs authored by bots
+      (GitHub user type Bot)
+    required: false
+    default: 'true'
   skip_users:
     description: Comma-separated list of usernames to skip validation
     required: false
@@ -64,10 +70,6 @@ inputs:
     description: Newline-separated list of target branches to validate against (repository default branch is automatically included)
     required: false
     default: ''
-  validate_bot_authors:
-    description: Whether to validate PRs authored by bots instead of skipping them
-    required: false
-    default: 'false'
 
 runs:
   using: docker

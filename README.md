@@ -39,7 +39,9 @@ jobs:
 
 Do not check out the PR head ref or run code from the PR branch in this job. This action only reads PR data via the GitHub API.
 
-`skip_users_file_path` is fetched at runtime from the repository. Supported formats:
+By default (`skip_bot_authors: true`), PRs authored by bots (`user.type == "Bot"`) skip all contribution checks. Set `skip_bot_authors: false` to validate bot PRs.
+
+`skip_users` and `skip_users_file_path` also skip all checks for matching authors. `skip_users_file_path` is fetched at runtime from the repository. Supported formats:
 
 - `.github/skip_users.txt` — path relative to the workflow repository
 - `OWASP/Nest/.github/skip_users.txt` — full GitHub path (owner included)
@@ -51,6 +53,7 @@ dependabot[bot]
 renovate[bot]
 ```
 
+With `skip_bot_authors` enabled (the default), listing bot accounts in `skip_users` is optional.
 `check_for` is **required**. Set it to the contribution checks you want to run. Supported values:
 
 - `commit_sign_off` — all commits must include a Signed-off-by trailer
@@ -73,7 +76,9 @@ Customize failure comments with `error_{check_name}` inputs (for example `error_
 
 ### Check execution
 
-Enabled checks run in a fixed order: issue-related rules (branch, issue resolution, assignee), then commit signature, then sign-off. Within issue validation, the action stops at the first failure (for example, a bad target branch is reported before issue resolution runs). Each check class returns one result; multiple independent checks (such as `commit_signature` and `commit_sign_off`) can fail in the same run.
+Author skips run first: when `skip_bot_authors` is true (default) and the PR author is a bot, or when the author is in `skip_users`, the action exits successfully without running contribution checks.
+
+Enabled checks then run in a fixed order: issue-related rules (branch, issue resolution, assignee), then commit signature, then sign-off. Within issue validation, the action stops at the first failure (for example, a bad target branch is reported before issue resolution runs). Each check class returns one result; multiple independent checks (such as `commit_signature` and `commit_sign_off`) can fail in the same run.
 
 When GitHub closing-link lookup fails with an API error, the action does not fall back to parsing the PR description. That path is covered by unit tests in `tests/test_issue_check.py` (not integration tests, because real GitHub API errors cannot be triggered reliably in CI).
 

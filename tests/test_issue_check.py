@@ -72,23 +72,10 @@ class TestIssueCheck:
             reason="Missing pull request context",
         )
 
-    def test_validate_bot_pr(
+    def test_validate_bot_pr_is_not_skipped_by_issue_check(
         self, issue_check, mock_config, mock_github_client, mock_bot_pr
     ):
-        """Test that bot PRs are skipped by default."""
-        mock_config.validate_bot_authors = False
-        result = issue_check.run(
-            make_context(mock_config, mock_github_client, mock_bot_pr)
-        )
-
-        assert result.passed is True
-        assert result.reason == "Bot user"
-
-    def test_validate_bot_pr_when_validate_bot_authors_enabled(
-        self, issue_check, mock_config, mock_github_client, mock_bot_pr
-    ):
-        """Test that bot PRs are validated when validate_bot_authors is enabled."""
-        mock_config.validate_bot_authors = True
+        """Test that IssueCheck validates bot PRs (author skip is handled in main)."""
         mock_config.check_issue_reference = True
         mock_config.check_issue_assignee = False
         mock_config.target_branches = []
@@ -112,15 +99,31 @@ class TestIssueCheck:
         assert result.passed is False
         assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
-    def test_validate_skip_user_pr(
+    def test_validate_skip_user_is_not_skipped_by_issue_check(
         self, issue_check, mock_config, mock_github_client, mock_pr
     ):
-        """Test that PRs from skip users are skipped."""
+        """Test that IssueCheck validates skip-list users (author skip is in main)."""
         mock_pr.user.login = "testuser1"
+        mock_config.check_issue_reference = True
+        mock_config.check_issue_assignee = False
+        mock_config.target_branches = []
+        mock_pr.base.repo.full_name = "testowner/testrepo"
+        mock_pr.body = "PR without issue reference"
+        mock_github_client._Github__requester.requestJsonAndCheck.return_value = (
+            {},
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {"closingIssuesReferences": {"edges": []}}
+                    }
+                }
+            },
+        )
+
         result = issue_check.run(make_context(mock_config, mock_github_client, mock_pr))
 
-        assert result.passed is True
-        assert result.reason == "User in skip list"
+        assert result.passed is False
+        assert result.reason == NO_CORRESPONDING_ISSUE_REASON
 
     def test_validate_pr_with_linked_issue(
         self,

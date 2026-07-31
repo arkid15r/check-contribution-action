@@ -184,7 +184,7 @@ run_action() {
     -e "GITHUB_EVENT_PATH=/github/workspace/.integration/event.json"
     -e "GITHUB_WORKSPACE=/github/workspace"
     -e "INPUT_GITHUB_TOKEN=${GH_TOKEN}"
-    -e "INPUT_VALIDATE_BOT_AUTHORS=true"
+    -e "INPUT_SKIP_BOT_AUTHORS=false"
   )
 
   while [[ $# -gt 0 ]]; do

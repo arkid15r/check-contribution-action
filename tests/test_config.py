@@ -53,7 +53,7 @@ class TestConfig:
             assert config.check_target_branch is False
             assert config.sign_off_strict_match is False
             assert config.close_on == frozenset()
-            assert config.validate_bot_authors is False
+            assert config.skip_bot_authors is True
             assert config.has_enabled_checks is True
             assert config.errors == DEFAULT_ERROR_MESSAGES
 
@@ -324,17 +324,17 @@ class TestConfig:
             assert config.has_enabled_checks is True
             assert "issue_assignee" in config.enabled_check_names()
 
-    def test_validate_bot_authors_input(self):
-        """Test validate_bot_authors boolean input."""
+    def test_skip_bot_authors_input(self):
+        """Test skip_bot_authors boolean input."""
         with patch.dict(
             os.environ,
             {
                 **BASE_ENV,
-                "INPUT_VALIDATE_BOT_AUTHORS": "true",
+                "INPUT_SKIP_BOT_AUTHORS": "false",
             },
         ):
             config = Config()
-            assert config.validate_bot_authors is True
+            assert config.skip_bot_authors is False
 
     def test_validate_close_on_rejects_disabled_checks(self):
         """Test close_on raises when triggers are not enabled in check_for."""

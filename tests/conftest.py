@@ -18,7 +18,7 @@ def mock_config():
     config.check_commit_sign_off = False
     config.sign_off_strict_match = False
     config.close_on = frozenset()
-    config.validate_bot_authors = False
+    config.skip_bot_authors = True
     config.errors = {
         "issue_reference": "Issue reference message",
         "issue_assignee": "Issue assignee message",

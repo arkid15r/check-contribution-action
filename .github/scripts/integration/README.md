@@ -17,7 +17,7 @@ Scripts create real issues, branches, and pull requests in the repository, run t
   bash .github/scripts/integration/run_case.sh issue-linked-pass
   ```
 
-Integration cases pass `validate_bot_authors=true` so PRs created by `github-actions[bot]` are validated.
+Integration cases pass `skip_bot_authors=false` so PRs created by `github-actions[bot]` are validated.
 
 ## Cases
 

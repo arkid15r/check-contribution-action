@@ -29,9 +29,7 @@ class Config:
             "sign_off_strict_match", False
         )
         self.close_on = self.parse_close_on()
-        self.validate_bot_authors = self.get_boolean_input(
-            "validate_bot_authors", False
-        )
+        self.skip_bot_authors = self.get_boolean_input("skip_bot_authors", True)
         self.errors = self.load_errors()
         self.validate_enabled_checks()
         self.validate_close_on()

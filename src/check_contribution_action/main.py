@@ -8,6 +8,7 @@ import sys
 
 from github import Github, PullRequest
 
+from check_contribution_action.author_skip import skip_author
 from check_contribution_action.checks import ALL_CHECKS, CheckContext
 from check_contribution_action.commits import load_pull_request_commits
 from check_contribution_action.config import Config
@@ -107,6 +108,10 @@ def main() -> None:
             github = Github(config.github_token)
             repo = github.get_repo(repo_name)
             pull_request = repo.get_pull(pr_number)
+
+        if pull_request is not None and (reason := skip_author(pull_request, config)):
+            logger.info("Skipping PR #%s: %s", pr_number, reason)
+            sys.exit(0)
 
         validation_result = run_checks(
             config,

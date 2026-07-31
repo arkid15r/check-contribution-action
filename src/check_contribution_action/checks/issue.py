@@ -131,25 +131,6 @@ class IssueCheck:
             "Validating PR #%s by %s", pull_request.number, pull_request.user.login
         )
 
-        if pull_request.user.type == "Bot" and not config.validate_bot_authors:
-            logger.info("Skipping validation for bot user: %s", pull_request.user.login)
-            return CheckResult(
-                name=success_check_name(config),
-                passed=True,
-                reason="Bot user",
-            )
-
-        if pull_request.user.login in config.skip_users:
-            logger.info(
-                "Skipping validation for user in skip list: %s",
-                pull_request.user.login,
-            )
-            return CheckResult(
-                name=success_check_name(config),
-                passed=True,
-                reason="User in skip list",
-            )
-
         if config.check_target_branch:
             branch_result = self.validate_target_branch(pull_request, config)
             if not branch_result.passed:
