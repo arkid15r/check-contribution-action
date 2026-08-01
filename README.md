@@ -29,7 +29,7 @@ jobs:
       issues: read
       pull-requests: write
     steps:
-      - uses: arkid15r/check-contribution-action@v0.1.6
+      - uses: arkid15r/check-contribution-action@v0.1.7
         with:
           check_for: commit_sign_off, commit_signature, issue_assignee, issue_reference
           close_on: issue_assignee
