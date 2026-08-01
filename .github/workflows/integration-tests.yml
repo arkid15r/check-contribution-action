@@ -84,6 +84,7 @@ jobs:
       matrix:
         case:
           - commit-sign-off-fail
+          - commit-sign-off-merge-pass
           - commit-sign-off-pass
           - commit-signature-fail
           - issue-assignee-fail

@@ -13,6 +13,7 @@ class CommitInfo:
     message: str
     signed: bool
     sign_offs: list[tuple[str, str]] = field(default_factory=list)
+    is_merge: bool = False
 
 
 @dataclass

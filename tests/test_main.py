@@ -44,10 +44,11 @@ class TestLoadEventData:
         assert exc_info.value.code == 1
 
 
-def make_event_data() -> dict:
+def make_event_data(*, login: str = "testuser", user_type: str = "User") -> dict:
     return {
         "pull_request": {
             "number": 123,
+            "user": {"login": login, "type": user_type},
             "head": {
                 "repo": {"full_name": "owner/repo"},
                 "sha": "headsha1234567890123456789012345678901234",
@@ -62,17 +63,14 @@ def make_event_data() -> dict:
 
 def configure_author_skip(
     mock_config: Mock,
-    mock_pull_request: Mock | None = None,
     *,
     login: str = "testuser",
     user_type: str = "User",
-) -> None:
-    """Set author-skip attributes so main does not exit early unexpectedly."""
+) -> dict:
+    """Configure author-skip settings and return matching event payload data."""
     mock_config.skip_bot_authors = True
     mock_config.skip_users = []
-    if mock_pull_request is not None:
-        mock_pull_request.user.login = login
-        mock_pull_request.user.type = user_type
+    return make_event_data(login=login, user_type=user_type)
 
 
 class TestMain:
@@ -89,6 +87,8 @@ class TestMain:
         mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = False
+        mock_config.skip_bot_authors = True
+        mock_config.skip_users = []
 
         with pytest.raises(SystemExit) as exc_info:
             main()
@@ -107,7 +107,6 @@ class TestMain:
         self, mock_file, mock_config_class, mock_github_class, mock_run_checks
     ):
         """Test successful validation exits with code 0."""
-        mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["commit_signature"]
@@ -117,11 +116,13 @@ class TestMain:
         mock_config.check_target_branch = False
         mock_config.check_commit_signature = True
         mock_config.check_commit_sign_off = False
+        mock_file.return_value.read.return_value = json.dumps(
+            configure_author_skip(mock_config)
+        )
         mock_repo = Mock()
         mock_pull_request = Mock()
         mock_github_class.return_value.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pull_request
-        configure_author_skip(mock_config, mock_pull_request)
         mock_run_checks.return_value = ValidationResult(passed=True, results=[])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -148,7 +149,6 @@ class TestMain:
         mock_pr_manager_class,
     ):
         """Test failed validation posts comment and exits with code 1."""
-        mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["issue_reference"]
@@ -159,12 +159,14 @@ class TestMain:
         mock_config.check_commit_signature = False
         mock_config.check_commit_sign_off = False
         mock_config.github_token = "token"
+        mock_file.return_value.read.return_value = json.dumps(
+            configure_author_skip(mock_config)
+        )
 
         mock_repo = Mock()
         mock_pull_request = Mock()
         mock_github_class.return_value.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pull_request
-        configure_author_skip(mock_config, mock_pull_request)
 
         mock_run_checks.return_value = ValidationResult(
             passed=False,
@@ -203,7 +205,6 @@ class TestMain:
         mock_pr_manager_class,
     ):
         """Test commit check failures use the PR manager when GitHub is available."""
-        mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["commit_signature"]
@@ -214,12 +215,14 @@ class TestMain:
         mock_config.check_commit_signature = True
         mock_config.check_commit_sign_off = False
         mock_config.github_token = "token"
+        mock_file.return_value.read.return_value = json.dumps(
+            configure_author_skip(mock_config)
+        )
 
         mock_repo = Mock()
         mock_pull_request = Mock()
         mock_github_class.return_value.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pull_request
-        configure_author_skip(mock_config, mock_pull_request)
 
         mock_run_checks.return_value = ValidationResult(
             passed=False,
@@ -250,8 +253,7 @@ class TestMain:
     def test_main_skips_bot_author(
         self, mock_file, mock_config_class, mock_github_class, mock_run_checks
     ):
-        """Test bot-authored PRs exit successfully without running checks."""
-        mock_file.return_value.read.return_value = json.dumps(make_event_data())
+        """Test bot-authored PRs exit successfully without calling GitHub."""
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["commit_signature"]
@@ -261,23 +263,19 @@ class TestMain:
         mock_config.check_target_branch = False
         mock_config.check_commit_signature = True
         mock_config.check_commit_sign_off = False
-        mock_config.github_token = "token"
-
-        mock_repo = Mock()
-        mock_pull_request = Mock()
-        mock_github_class.return_value.get_repo.return_value = mock_repo
-        mock_repo.get_pull.return_value = mock_pull_request
-        configure_author_skip(
-            mock_config,
-            mock_pull_request,
-            login="dependabot[bot]",
-            user_type="Bot",
+        mock_file.return_value.read.return_value = json.dumps(
+            configure_author_skip(
+                mock_config,
+                login="dependabot[bot]",
+                user_type="Bot",
+            )
         )
 
         with pytest.raises(SystemExit) as exc_info:
             main()
 
         assert exc_info.value.code == 0
+        mock_github_class.assert_not_called()
         mock_run_checks.assert_not_called()
 
     @patch("check_contribution_action.main.run_checks")
@@ -291,8 +289,7 @@ class TestMain:
     def test_main_skips_user_in_skip_list(
         self, mock_file, mock_config_class, mock_github_class, mock_run_checks
     ):
-        """Test skip-list authors exit successfully without running checks."""
-        mock_file.return_value.read.return_value = json.dumps(make_event_data())
+        """Test skip-list authors exit successfully without calling GitHub."""
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["commit_signature"]
@@ -302,19 +299,16 @@ class TestMain:
         mock_config.check_target_branch = False
         mock_config.check_commit_signature = True
         mock_config.check_commit_sign_off = False
-        mock_config.github_token = "token"
-
-        mock_repo = Mock()
-        mock_pull_request = Mock()
-        mock_github_class.return_value.get_repo.return_value = mock_repo
-        mock_repo.get_pull.return_value = mock_pull_request
-        configure_author_skip(mock_config, mock_pull_request, login="allowed-bot")
+        mock_file.return_value.read.return_value = json.dumps(
+            configure_author_skip(mock_config, login="allowed-bot")
+        )
         mock_config.skip_users = ["allowed-bot"]
 
         with pytest.raises(SystemExit) as exc_info:
             main()
 
         assert exc_info.value.code == 0
+        mock_github_class.assert_not_called()
         mock_run_checks.assert_not_called()
 
     @patch("check_contribution_action.main.run_checks")
@@ -329,7 +323,6 @@ class TestMain:
         self, mock_file, mock_config_class, mock_github_class, mock_run_checks
     ):
         """Test bot PRs are validated when skip_bot_authors is false."""
-        mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["commit_signature"]
@@ -340,18 +333,19 @@ class TestMain:
         mock_config.check_commit_signature = True
         mock_config.check_commit_sign_off = False
         mock_config.github_token = "token"
+        mock_file.return_value.read.return_value = json.dumps(
+            configure_author_skip(
+                mock_config,
+                login="dependabot[bot]",
+                user_type="Bot",
+            )
+        )
+        mock_config.skip_bot_authors = False
 
         mock_repo = Mock()
         mock_pull_request = Mock()
         mock_github_class.return_value.get_repo.return_value = mock_repo
         mock_repo.get_pull.return_value = mock_pull_request
-        configure_author_skip(
-            mock_config,
-            mock_pull_request,
-            login="dependabot[bot]",
-            user_type="Bot",
-        )
-        mock_config.skip_bot_authors = False
         mock_run_checks.return_value = ValidationResult(passed=True, results=[])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -411,7 +405,6 @@ class TestMain:
         self, mock_file, mock_config_class, mock_github_class, mock_run_checks
     ):
         """Test failed validation logs errors when no GitHub client is used."""
-        mock_file.return_value.read.return_value = json.dumps(make_event_data())
         mock_config = mock_config_class.return_value
         mock_config.has_enabled_checks = True
         mock_config.enabled_check_names.return_value = ["issue_reference"]
@@ -421,6 +414,9 @@ class TestMain:
         mock_config.check_target_branch = False
         mock_config.check_commit_signature = False
         mock_config.check_commit_sign_off = False
+        mock_file.return_value.read.return_value = json.dumps(
+            configure_author_skip(mock_config)
+        )
 
         mock_run_checks.return_value = ValidationResult(
             passed=False,

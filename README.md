@@ -4,7 +4,7 @@ GitHub Action for validating contribution requirements: issue linkage, commit si
 
 Configure which checks run via the required `check_for` input.
 
-Sign-off and signature checks load **PR commits from the GitHub API** (`pulls/{number}/commits`). No `actions/checkout` step is required.
+Sign-off and signature checks load **PR commits from the GitHub API** (`pulls/{number}/commits`). No `actions/checkout` step is required. Merge commits (for example from GitHub’s “Update branch”) are excluded from `commit_signature` and `commit_sign_off`.
 
 ## Usage
 
@@ -54,10 +54,11 @@ renovate[bot]
 ```
 
 With `skip_bot_authors` enabled (the default), listing bot accounts in `skip_users` is optional.
+
 `check_for` is **required**. Set it to the contribution checks you want to run. Supported values:
 
-- `commit_sign_off` — all commits must include a Signed-off-by trailer
-- `commit_signature` — all commits must be GPG or SSH signed
+- `commit_sign_off` — all non-merge commits must include a Signed-off-by trailer
+- `commit_signature` — all non-merge commits must be GPG or SSH signed
 - `issue_assignee` — linked issue assignee must match the PR author (resolves the issue the same way as `issue_reference`)
 - `issue_reference` — PR must reference a corresponding issue via GitHub linking or a closing reference in the PR description. When GitHub closing-link lookup fails (API error), the action does not fall back to parsing the PR description.
 - `target_branch` — PR must target one of the branches listed in `target_branches` (also requires `target_branches`)
@@ -78,7 +79,7 @@ Customize failure comments with `error_{check_name}` inputs (for example `error_
 
 Author skips run first: when `skip_bot_authors` is true (default) and the PR author is a bot, or when the author is in `skip_users`, the action exits successfully without running contribution checks.
 
-Enabled checks then run in a fixed order: issue-related rules (branch, issue resolution, assignee), then commit signature, then sign-off. Within issue validation, the action stops at the first failure (for example, a bad target branch is reported before issue resolution runs). Each check class returns one result; multiple independent checks (such as `commit_signature` and `commit_sign_off`) can fail in the same run.
+Enabled checks then run in a fixed order: issue-related rules (branch, issue resolution, assignee), then commit signature, then sign-off. Within issue validation, the action stops at the first failure (for example, a bad target branch is reported before issue resolution runs). Each check class returns one result; multiple independent checks (such as `commit_signature` and `commit_sign_off`) can fail in the same run. Merge commits are omitted before signature and sign-off run.
 
 When GitHub closing-link lookup fails with an API error, the action does not fall back to parsing the PR description. That path is covered by unit tests in `tests/test_issue_check.py` (not integration tests, because real GitHub API errors cannot be triggered reliably in CI).
 

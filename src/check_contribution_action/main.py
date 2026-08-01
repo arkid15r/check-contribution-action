@@ -102,16 +102,21 @@ def main() -> None:
 
         logger.info("Enabled checks: %s", ", ".join(config.enabled_check_names()))
 
+        author = pull_request_data.get("user") or {}
+        if reason := skip_author(
+            author.get("login", ""),
+            author.get("type", ""),
+            config,
+        ):
+            logger.info("Skipping PR #%s: %s", pr_number, reason)
+            sys.exit(0)
+
         pull_request: PullRequest | None = None
         github: Github | None = None
         if needs_github_client(config):
             github = Github(config.github_token)
             repo = github.get_repo(repo_name)
             pull_request = repo.get_pull(pr_number)
-
-        if pull_request is not None and (reason := skip_author(pull_request, config)):
-            logger.info("Skipping PR #%s: %s", pr_number, reason)
-            sys.exit(0)
 
         validation_result = run_checks(
             config,

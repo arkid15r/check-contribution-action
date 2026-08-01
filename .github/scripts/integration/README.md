@@ -26,6 +26,7 @@ Case IDs mirror `check_for` / `close_on` names (`_` → `-`) with a `-pass` or `
 | Case | `check_for` | Expected result |
 |------|-------------|-----------------|
 | `commit-sign-off-fail` | `commit_sign_off` | fail |
+| `commit-sign-off-merge-pass` | `commit_sign_off` | pass (signed-off commits plus an unsigned merge commit that is ignored) |
 | `commit-sign-off-pass` | `commit_sign_off` | pass |
 | `commit-signature-fail` | `commit_signature` | fail |
 | `issue-assignee-fail` | `issue_assignee, issue_reference` | fail (linked issue, no assignee) |

@@ -90,6 +90,39 @@ $(sign_off_trailer)"
     run_action 0 check_for=commit_sign_off
     ;;
 
+  commit-sign-off-merge-pass)
+    feature_branch="${BRANCH_PREFIX}/head"
+    side_branch="${BRANCH_PREFIX}/side"
+
+    git fetch origin main
+    git checkout -B "${feature_branch}" "origin/main"
+    git commit --allow-empty -m "feature commit with sign-off
+
+$(sign_off_trailer)"
+    git push -u origin "${feature_branch}"
+    track_branch "${feature_branch}"
+
+    git checkout -B "${side_branch}" "origin/main"
+    git commit --allow-empty -m "side commit merged into feature
+
+$(sign_off_trailer)"
+    git push -u origin "${side_branch}"
+    track_branch "${side_branch}"
+
+    git checkout "${feature_branch}"
+    git merge --no-ff "${side_branch}" \
+      -m "Merge branch '${side_branch}' into ${feature_branch}"
+    git push origin "${feature_branch}"
+
+    create_pull_request \
+      "commit-sign-off-merge-pass" \
+      "Integration test for sign-off pass with an unsigned merge commit." \
+      "main" \
+      "${feature_branch}"
+    build_event_payload
+    run_action 0 check_for=commit_sign_off
+    ;;
+
   commit-sign-off-fail)
     create_branch_with_commit "${BRANCH_PREFIX}/head" "commit sign-off fail without trailer"
     create_pull_request \
