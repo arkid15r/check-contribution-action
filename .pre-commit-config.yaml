@@ -10,7 +10,7 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 2eeb5678de71a00c0902cbda7105d328432f72cb  # v0.16.8
+    rev: 38bfb07c0c64c304f47eb52090f8288150c77730  # v0.17.1
     hooks:
       - id: ruff-check
         args:
