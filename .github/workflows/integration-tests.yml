@@ -39,7 +39,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
-      github.event.pull_request.head.repo.fork == false
+      (github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]')
 
     steps:
       - name: Checkout repository
@@ -78,7 +78,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
-      github.event.pull_request.head.repo.fork == false
+      (github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]')
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +118,9 @@ jobs:
     name: integration-cleanup
     runs-on: ubuntu-latest
     needs: integration
-    if: always()
+    # Run after a real integration attempt. A skipped integration job has nothing to clean up,
+    # and this job would fail under Dependabot's read-only token.
+    if: always() && needs.integration.result != 'skipped'
     env:
       GH_TOKEN: ${{ github.token }}
 
