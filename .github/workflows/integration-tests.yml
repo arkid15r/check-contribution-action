@@ -36,10 +36,20 @@ jobs:
   build:
     name: integration-build
     runs-on: ubuntu-latest
+    # Skip Dependabot pull requests and the merge commit Dependabot authors.
+    # A skipped job reports success, so a required check still allows the PR to merge.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]')
+      (
+        github.event_name == 'push' &&
+        github.actor != 'dependabot[bot]' &&
+        github.event.head_commit.author.name != 'dependabot[bot]'
+      ) ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork == false &&
+        github.actor != 'dependabot[bot]'
+      )
 
     steps:
       - name: Checkout repository
@@ -77,8 +87,16 @@ jobs:
       INTEGRATION_SKIP_DOCKER_BUILD: "true"
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]')
+      (
+        github.event_name == 'push' &&
+        github.actor != 'dependabot[bot]' &&
+        github.event.head_commit.author.name != 'dependabot[bot]'
+      ) ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.fork == false &&
+        github.actor != 'dependabot[bot]'
+      )
     strategy:
       fail-fast: false
       matrix:
