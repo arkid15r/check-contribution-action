@@ -1,16 +1,25 @@
 version: 2
 updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      day: thursday
+      interval: weekly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: daily
+      day: thursday
+      interval: weekly
 
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: daily
+      day: thursday
+      interval: weekly
 
   - package-ecosystem: pre-commit
     directory: /
     schedule:
-      interval: daily
+      day: thursday
+      interval: weekly
