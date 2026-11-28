@@ -2,7 +2,7 @@
 
 from unittest.mock import Mock
 
-from check_contribution_action.author_skip import skip_author
+from check_contribution_action.author_skip import skip_assignee, skip_author
 
 
 def make_config(
@@ -68,3 +68,41 @@ class TestSkipAuthor:
             make_config(skip_users=["dependabot[bot]"]),
         )
         assert reason == "bot author: dependabot[bot]"
+
+
+class TestSkipAssignee:
+    """Test cases for skip_assignee."""
+
+    def test_skips_when_assignee_is_in_skip_list(self):
+        """Test a PR assignee on the skip list skips checks."""
+        reason = skip_assignee(
+            ["contributor", "maintainer"],
+            make_config(skip_users=["maintainer"]),
+        )
+        assert reason == "assignee in skip list: maintainer"
+
+    def test_skip_assignee_matching_is_case_insensitive(self):
+        """Test assignee comparison ignores login case."""
+        reason = skip_assignee(
+            ["Maintainer"],
+            make_config(skip_users=["maintainer"]),
+        )
+        assert reason == "assignee in skip list: Maintainer"
+
+    def test_does_not_skip_when_assignees_are_outside_skip_list(self):
+        """Test assignees outside the skip list do not skip checks."""
+        reason = skip_assignee(
+            ["contributor"],
+            make_config(skip_users=["maintainer"]),
+        )
+        assert reason is None
+
+    def test_does_not_skip_when_pr_has_no_assignees(self):
+        """Test an unassigned PR is not skipped."""
+        reason = skip_assignee([], make_config(skip_users=["maintainer"]))
+        assert reason is None
+
+    def test_ignores_empty_assignee_login(self):
+        """Test a blank assignee login does not match the skip list."""
+        reason = skip_assignee([""], make_config(skip_users=[""]))
+        assert reason is None

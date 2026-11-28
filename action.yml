@@ -55,7 +55,11 @@ inputs:
     required: false
     default: 'true'
   skip_users:
-    description: Comma-separated list of usernames to skip validation
+    description: >-
+      Comma-separated GitHub usernames that skip all contribution checks.
+      A match on the PR author or any PR assignee skips validation, so the PR
+      is not auto-closed. Assign the PR to a listed maintainer to override
+      sign-off or signature failures that cannot be fixed without a rewrite.
     required: false
     default: ''
   skip_users_file_path:

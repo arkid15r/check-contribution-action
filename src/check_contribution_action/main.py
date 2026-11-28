@@ -8,7 +8,7 @@ import sys
 
 from github import Github, PullRequest
 
-from check_contribution_action.author_skip import skip_author
+from check_contribution_action.author_skip import skip_assignee, skip_author
 from check_contribution_action.checks import ALL_CHECKS, CheckContext
 from check_contribution_action.commits import load_pull_request_commits
 from check_contribution_action.config import Config
@@ -108,6 +108,15 @@ def main() -> None:
             author.get("type", ""),
             config,
         ):
+            logger.info("Skipping PR #%s: %s", pr_number, reason)
+            sys.exit(0)
+
+        assignee_logins = [
+            assignee.get("login", "")
+            for assignee in pull_request_data.get("assignees") or []
+            if isinstance(assignee, dict)
+        ]
+        if reason := skip_assignee(assignee_logins, config):
             logger.info("Skipping PR #%s: %s", pr_number, reason)
             sys.exit(0)
 

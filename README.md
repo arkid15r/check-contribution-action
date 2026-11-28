@@ -15,6 +15,7 @@ name: Check Contribution
 on:
   pull_request_target:
     types:
+      - assigned
       - edited
       - opened
       - reopened
@@ -41,7 +42,7 @@ Do not check out the PR head ref or run code from the PR branch in this job. Thi
 
 By default (`skip_bot_authors: true`), PRs authored by bots (`user.type == "Bot"`) skip all contribution checks. Set `skip_bot_authors: false` to validate bot PRs.
 
-`skip_users` and `skip_users_file_path` also skip all checks for matching authors. `skip_users_file_path` is fetched at runtime from the repository. Supported formats:
+`skip_users` and `skip_users_file_path` skip all checks when the PR author or any PR assignee matches. Assigning the PR to a listed maintainer is the override for sign-off or signature failures that cannot be fixed without rewriting history: the action exits successfully and does not auto-close. Include the `assigned` event so that assignment re-runs the check. If the PR was already closed, assign the maintainer and then reopen it. `skip_users_file_path` is fetched at runtime from the repository. Supported formats:
 
 - `.github/skip_users.txt` — path relative to the workflow repository
 - `OWASP/Nest/.github/skip_users.txt` — full GitHub path (owner included)
@@ -77,7 +78,7 @@ Customize failure comments with `error_{check_name}` inputs (for example `error_
 
 ### Check execution
 
-Author skips run first: when `skip_bot_authors` is true (default) and the PR author is a bot, or when the author is in `skip_users`, the action exits successfully without running contribution checks.
+Author and assignee skips run first. The action exits successfully without running contribution checks when `skip_bot_authors` is true (default) and the PR author is a bot, or when the PR author or any PR assignee is in `skip_users`.
 
 Enabled checks then run in a fixed order: issue-related rules (branch, issue resolution, assignee), then commit signature, then sign-off. Within issue validation, the action stops at the first failure (for example, a bad target branch is reported before issue resolution runs). Each check class returns one result; multiple independent checks (such as `commit_signature` and `commit_sign_off`) can fail in the same run. Merge commits are omitted before signature and sign-off run.
 

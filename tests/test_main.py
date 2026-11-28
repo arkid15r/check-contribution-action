@@ -44,11 +44,17 @@ class TestLoadEventData:
         assert exc_info.value.code == 1
 
 
-def make_event_data(*, login: str = "testuser", user_type: str = "User") -> dict:
+def make_event_data(
+    *,
+    login: str = "testuser",
+    user_type: str = "User",
+    assignees: list[str] | None = None,
+) -> dict:
     return {
         "pull_request": {
             "number": 123,
             "user": {"login": login, "type": user_type},
+            "assignees": [{"login": assignee} for assignee in assignees or []],
             "head": {
                 "repo": {"full_name": "owner/repo"},
                 "sha": "headsha1234567890123456789012345678901234",
@@ -303,6 +309,40 @@ class TestMain:
             configure_author_skip(mock_config, login="allowed-bot")
         )
         mock_config.skip_users = ["allowed-bot"]
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 0
+        mock_github_class.assert_not_called()
+        mock_run_checks.assert_not_called()
+
+    @patch("check_contribution_action.main.run_checks")
+    @patch("check_contribution_action.main.Github")
+    @patch("check_contribution_action.main.Config")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch.dict(
+        os.environ,
+        {"GITHUB_EVENT_PATH": "/fake/event/path", "INPUT_GITHUB_TOKEN": "test_token"},
+    )
+    def test_main_skips_when_assignee_is_in_skip_list(
+        self, mock_file, mock_config_class, mock_github_class, mock_run_checks
+    ):
+        """Test a skip-list assignee exits successfully without closing the PR."""
+        mock_config = mock_config_class.return_value
+        mock_config.has_enabled_checks = True
+        mock_config.enabled_check_names.return_value = ["commit_sign_off"]
+        mock_config.check_issue_reference = False
+        mock_config.check_issue_assignee = False
+        mock_config.target_branches = []
+        mock_config.check_target_branch = False
+        mock_config.check_commit_signature = True
+        mock_config.check_commit_sign_off = True
+        mock_file.return_value.read.return_value = json.dumps(
+            make_event_data(login="contributor", assignees=["maintainer"])
+        )
+        mock_config.skip_bot_authors = True
+        mock_config.skip_users = ["maintainer"]
 
         with pytest.raises(SystemExit) as exc_info:
             main()
